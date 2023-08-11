@@ -30,10 +30,9 @@ const CONFIG = {
     endHour: 19,
 };
 
-// the fallbackValues simulate a standard operation mode with enough energy availabel and water temperature in a range where heating is permitted
-const INFLUX_WATER_TEMPERATURE_LAST = {url: INFLUX_BASE_URL + '/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "autogen"."eta_buffer_temperature_sensor_top_celsius" WHERE time >= now() - 5m and time <= now()', fallBackValue: CONFIG.minWaterTemperature + 10};
-const INFLUX_GRID_USAGE_LAST = {url: INFLUX_BASE_URL + '/query?pretty=true&db=inverter&q=SELECT last("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 5m and time <= now()', fallBackValue: null};
-const INFLUX_GRID_USAGE_MEAN = {url: INFLUX_BASE_URL + '/query?pretty=true&db=inverter&q=SELECT mean("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 10m and time <= now()', fallBackValue: null};
+const INFLUX_WATER_TEMPERATURE_LAST = {url: INFLUX_BASE_URL + '/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "autogen"."eta_buffer_temperature_sensor_top_celsius" WHERE time >= now() - 5m and time <= now()'};
+const INFLUX_GRID_USAGE_LAST = {url: INFLUX_BASE_URL + '/query?pretty=true&db=inverter&q=SELECT last("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 5m and time <= now()'};
+const INFLUX_GRID_USAGE_MEAN = {url: INFLUX_BASE_URL + '/query?pretty=true&db=inverter&q=SELECT mean("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 10m and time <= now()'};
 const INFLUX_REQUEST_HEADER = {"Authorization" : "Token " + INFLUX_TOKEN};
 
 const ShellySwitch = {
@@ -122,11 +121,11 @@ let executionTimer;
 function update() {
     switch0.get(function(switchOn) {
         HTTP.get(INFLUX_GRID_USAGE_LAST.url, INFLUX_REQUEST_HEADER, function(result) {
-            let gridUsageLast = getValue(result, INFLUX_GRID_USAGE_LAST.fallBackValue);
+            let gridUsageLast = getValue(result);
             HTTP.get(INFLUX_GRID_USAGE_MEAN.url, INFLUX_REQUEST_HEADER, function(result) {
-                let gridUsageMean = getValue(result, INFLUX_GRID_USAGE_MEAN.fallBackValue);
+                let gridUsageMean = getValue(result);
                 HTTP.get(INFLUX_WATER_TEMPERATURE_LAST.url, INFLUX_REQUEST_HEADER, function(result) {
-                    let waterTemperature = getValue(result, INFLUX_WATER_TEMPERATURE_LAST.fallBackValue);
+                    let waterTemperature = getValue(result);
                     let switchStatus = determineNewSwitchStatus(gridUsageMean, gridUsageLast, waterTemperature, switchOn);
                     sendStatusChange(switchStatus);
                     setSwitch(switchStatus);
@@ -140,19 +139,18 @@ function update() {
 /**
  * 
  * @param {JSON} result The json where to get value from 
- * @param {Number} fallBackValue 
- * @returns The value which should be a number
+ * @returns The value which should be a number or null if an error occurs
  */
-function getValue(result, fallBackValue) {
+function getValue(result) {
     if (result === null) {
-        console.log(new Date(), "Using fallback value " + fallBackValue)
-        return fallBackValue;
+        console.log(new Date(), "Could not get value from null result")
+        return null;
     }
     try {
         return result.results[0].series[0].values[0][1];
     } catch (error) {
         console.log(new Date(), "Could not get value from JSON", result);
-        return fallBackValue;
+        return null;
     }
 }
 
@@ -226,9 +224,9 @@ function sendStatusChange(switchStatus) {
 
 /**
  * 
- * @param {Number} wattGridUsageMean 
- * @param {Number} wattGridUsageLast 
- * @param {Number} currentWaterTemperature 
+ * @param {Number} wattGridUsageMean If null ON_FALLBACK will be activated durring day hours
+ * @param {Number} wattGridUsageLast If null ON_FALLBACK will be activated durring day hours
+ * @param {Number} currentWaterTemperature If null temperature dependency operation is deactivated only energy production would be taken in consideration
  * @param {boolean} switchOn 
  * @returns The SWITCH_STATUS which was determined due to the passed values
  */
@@ -238,11 +236,11 @@ function determineNewSwitchStatus(wattGridUsageMean, wattGridUsageLast, currentW
         return SWITCH_STATUS.OFF_NIGHT;
     }
 
-    if (currentWaterTemperature >= CONFIG.maxWaterTemperature) {
+    if (currentWaterTemperature !== null && currentWaterTemperature >= CONFIG.maxWaterTemperature) {
         return SWITCH_STATUS.OFF_HIGH_TEMPERATURE;
     }
     
-    if (currentWaterTemperature <= CONFIG.minWaterTemperature) {
+    if (currentWaterTemperature !== null && currentWaterTemperature <= CONFIG.minWaterTemperature) {
         return SWITCH_STATUS.ON_LOW_TEMPERATURE;
     }
 
