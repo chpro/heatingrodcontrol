@@ -18,7 +18,7 @@ const CONFIG = {
 
     // INFLUX host and tokens
     influxHost: process.env.INFLUX_HOST || "tig",
-    influxBaseUrl: process.env.INFLUX_BASE_URL || "http://" + this.influxHost + ":8086",
+    influxBaseUrl: process.env.INFLUX_BASE_URL || "http://tig:8086",
     influxToken: process.env.INFLUX_TOKEN,
 
     // shelly switch
@@ -32,6 +32,8 @@ const CONFIG = {
     timerPeriodOffHighTemperature: Number(process.env.TIMER_PERIOD_OFF_HIGH_TEMPERATURE) || 60 * MINUTE,
     timerPeriodOffNight: Number(process.env.TIMER_PERIOD_OFF_NIGHT) || 60 * MINUTE,
 };
+
+console.log(new Date(), "CONFIG: ", CONFIG)
 
 const SWITCH_STATUS = {
     ON_FALLBACK: {position: true, status: 3, message: "On due to no value for energy production was available", timerPeriod: CONFIG.timerPeriodOnFallback},
