@@ -1,3 +1,9 @@
+if (typeof DRY_RUN === 'undefined') {
+    DRY_RUN = false;
+} else {
+    DRY_RUN ? console.log(new Date(), "Executing dry run ... No switch status will be set. No timers will be scheduled.") : "";
+}
+
 const http = require('node:http');
 
 const TIG_HOST = "tig";
@@ -8,15 +14,15 @@ const MINUTE = 1000*60;
 const SWITCH_STATUS = {
     ON_FALLBACK: {position: true, status: 3, message: "On due to no value for energy production was available", timerPeriod: 60 * MINUTE},
     ON_LOW_TEMPERATURE: {position: true, status: 2, message: "On due to low water temperature", timerPeriod: 60 * MINUTE},
-    ON_ENERGY: {position: true, status: 1, message: "On due to excess energy", timerPeriod: MINUTE},
+    ON_ENERGY: {position: true, status: 1, message: "On due to excess energy", timerPeriod: MINUTE / 2},
     OFF_LOW_ENERGY: {position: false, status: 0, message: "Off due to not enough energy production", timerPeriod: 10 * MINUTE},
     OFF_HIGH_TEMPERATURE: {position: false, status: -1, message: "Off due to high water temperature", timerPeriod: 60 * MINUTE},
     OFF_NIGHT: {position: false, status: -2, message: "Off due to time resitrected to day hours", timerPeriod: 60 * MINUTE},
 };
 
 const CONFIG = {
-    wattThresholdSwitchOn: 3000,
-    wattThresholdSwitchOff: 0,
+    wattThresholdToSwitchOn: 3000,
+    wattThresholdToSwitchOff: 0,
     minWaterTemperature: 45,
     maxWaterTemperature: 70,
     // the time in which span
@@ -30,8 +36,6 @@ const INFLUX_GRID_USAGE_LAST = {url: INFLUX_BASE_URL + '/query?pretty=true&db=in
 const INFLUX_GRID_USAGE_MEAN = {url: INFLUX_BASE_URL + '/query?pretty=true&db=inverter&q=SELECT mean("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 10m and time <= now()', fallBackValue: null};
 const INFLUX_REQUEST_HEADER = {"Authorization" : "Token " + INFLUX_TOKEN};
 
-// Prototype object
-
 const ShellySwitch = {
     turnOn: function () {
         set(true);
@@ -43,9 +47,9 @@ const ShellySwitch = {
         HTTP.get("http://" + this.host + "/rpc/Switch.Set?id=" + this.id + "&on=" + position);
     },
     get: function(callback) {
-        // console.log("Getting switch status: http://" + this.host + "/rpc/Switch.GetStatus?id=" + this.id);
+        // console.log(new Date(), "Getting switch status: http://" + this.host + "/rpc/Switch.GetStatus?id=" + this.id);
         HTTP.get("http://" + this.host + "/rpc/Switch.GetStatus?id=" + this.id, null, (result) => {
-            callback(result.output === true);
+            callback(result === null ? null : result.output === true);
         });
     },
 };
@@ -65,7 +69,7 @@ const HTTP = {
                             `Status Code: ${statusCode}`);
         }
         if (error) {
-            console.error(error.message);
+            console.error(new Date(), `Got error: ${error.message}`);
             // Consume response data to free up memory
             res.resume();
             if (callback) {
@@ -84,14 +88,14 @@ const HTTP = {
                     callback(parsedData);
                 }
             } catch (e) {
-                console.error(e.message);
+                console.error(new Date(), `Got error: ${e.message}`);
                 if (callback) {
                     callback(null);
                 }
             }
         });
         }).on('error', (e) => {
-            console.error(`Got error: ${e.message}`);
+            console.error(new Date(), `Got error: ${e.message}`);
             if (callback) {
                 callback(null);
             }
@@ -109,50 +113,77 @@ function getSwitch(id) {
 
 let switch0 = getSwitch(0);
 
+// holds the handle for the recurring timer to clear it when new one is scheduled
 let executionTimer;
 
-// logic for updating
+/**
+ *  this is the entry point  which calls the switch status change
+ */
 function update() {
     switch0.get(function(switchOn) {
-        let gridUsageQuery = switchOn ? INFLUX_GRID_USAGE_LAST : INFLUX_GRID_USAGE_MEAN;
-        HTTP.get(gridUsageQuery.url, INFLUX_REQUEST_HEADER, function(result) {
-            let gridUsage = getValue(result, gridUsageQuery.fallBackValue);
-            HTTP.get(INFLUX_WATER_TEMPERATURE_LAST.url, INFLUX_REQUEST_HEADER, function(result) {
-                let waterTemperature = getValue(result, INFLUX_WATER_TEMPERATURE_LAST.fallBackValue);
-                let switchStatus = determineNewSwitchStatus(gridUsage, waterTemperature, switchOn);
-                sendStatusChange(switchStatus);
-                setSwitch(switchStatus);
-                updateTimer(switchStatus);
+        HTTP.get(INFLUX_GRID_USAGE_LAST.url, INFLUX_REQUEST_HEADER, function(result) {
+            let gridUsageLast = getValue(result, INFLUX_GRID_USAGE_LAST.fallBackValue);
+            HTTP.get(INFLUX_GRID_USAGE_MEAN.url, INFLUX_REQUEST_HEADER, function(result) {
+                let gridUsageMean = getValue(result, INFLUX_GRID_USAGE_MEAN.fallBackValue);
+                HTTP.get(INFLUX_WATER_TEMPERATURE_LAST.url, INFLUX_REQUEST_HEADER, function(result) {
+                    let waterTemperature = getValue(result, INFLUX_WATER_TEMPERATURE_LAST.fallBackValue);
+                    let switchStatus = determineNewSwitchStatus(gridUsageMean, gridUsageLast, waterTemperature, switchOn);
+                    sendStatusChange(switchStatus);
+                    setSwitch(switchStatus);
+                    updateTimer(switchStatus);
+                });
             });
         });
     });
 }
 
+/**
+ * 
+ * @param {JSON} result The json where to get value from 
+ * @param {Number} fallBackValue 
+ * @returns The value which should be a number
+ */
 function getValue(result, fallBackValue) {
     if (result === null) {
-        console.log("Using fallback value " + fallBackValue)
+        console.log(new Date(), "Using fallback value " + fallBackValue)
         return fallBackValue;
     }
     try {
         return result.results[0].series[0].values[0][1];
     } catch (error) {
-        console.log("Could not get value from JSON", result);
+        console.log(new Date(), "Could not get value from JSON", result);
         return fallBackValue;
     }
 }
 
+/**
+ * Sets a new interval timer and clears the old one
+ * @param {SWITCH_STATUS} switchStatus the new status of the switch which holds also the delay for the interval timer
+ */
 function updateTimer(switchStatus) {
     if (executionTimer) {
         clearInterval(executionTimer);
     }
-    executionTimer = setInterval(update, switchStatus.timerPeriod);
+    if (!DRY_RUN) {
+        executionTimer = setInterval(update, switchStatus.timerPeriod);
+    }
 }
 
+/**
+ * Calls remote function to switch on/off switch
+ * @param {SWITCH_STATUS} switchStatus the new status of the switch which holds also the new swicht postion
+ */
 function setSwitch(switchStatus) {
     console.log(new Date(), "New switchs status: " , switchStatus);
-    switch0.set(switchStatus.position);
+    if (!DRY_RUN) {
+        switch0.set(switchStatus.position);
+    }
 }
 
+/**
+ * Sends a status update to telegraf to write it into influx db
+ * @param {SWITCH_STATUS} switchStatus the new status of the switch which is transmitted as json to influx db
+ */
 function sendStatusChange(switchStatus) {
     const jsonDataString = JSON.stringify(switchStatus);
 
@@ -177,13 +208,13 @@ function sendStatusChange(switchStatus) {
     });
 
     response.on('end', () => {
-        console.log('Response:', data);
+        console.log(new Date(), 'Response:', data);
     });
     });
 
     // Handle errors
     request.on('error', (error) => {
-        console.error('Error:', error);
+        console.error(new Date(), 'Error:', error);
     });
 
     // Send the JSON data in the request body
@@ -193,8 +224,16 @@ function sendStatusChange(switchStatus) {
     request.end();
 }
 
-function determineNewSwitchStatus(wattGridUsage, currentWaterTemperature, switchOn) {
-    console.log(new Date(), "Determine switch status with grid usage " + wattGridUsage + " W, water temperature " + currentWaterTemperature + " °C and " + (switchOn ? " switch on " : " switch off "));
+/**
+ * 
+ * @param {Number} wattGridUsageMean 
+ * @param {Number} wattGridUsageLast 
+ * @param {Number} currentWaterTemperature 
+ * @param {boolean} switchOn 
+ * @returns The SWITCH_STATUS which was determined due to the passed values
+ */
+function determineNewSwitchStatus(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, switchOn) {
+    console.log(new Date(), "Determine switch status with grid usage (mean / last) " + wattGridUsageMean + " W / " + wattGridUsageLast + " W, water temperature " + currentWaterTemperature + " °C and " + (switchOn ? " switch on " : " switch off "));
     if (isNight()) {
         return SWITCH_STATUS.OFF_NIGHT;
     }
@@ -207,16 +246,16 @@ function determineNewSwitchStatus(wattGridUsage, currentWaterTemperature, switch
         return SWITCH_STATUS.ON_LOW_TEMPERATURE;
     }
 
-    if (wattGridUsage === null) {
+    if (wattGridUsageMean === null || wattGridUsageLast === null) {
         return SWITCH_STATUS.ON_FALLBACK;
     }
     
     // check if enough solar power is available
-    if (wattGridUsage < 0) { // feed power into grid
-        if (switchOn && Math.abs(wattGridUsage) >= CONFIG.wattThresholdSwitchOff) {
+    if (wattGridUsageLast < 0) { // feed power into grid
+        if (switchOn && Math.abs(wattGridUsageLast) >= CONFIG.wattThresholdToSwitchOff) {
             // as long some energy is feed in keep it on
             return SWITCH_STATUS.ON_ENERGY;
-        } else if (!switchOn && Math.abs(wattGridUsage) >= CONFIG.wattThresholdSwitchOn) {
+        } else if (!switchOn && Math.abs(wattGridUsageLast) >= CONFIG.wattThresholdToSwitchOn && Math.abs(wattGridUsageMean) >= CONFIG.wattThresholdToSwitchOn) {
             // feed in power exceeds watt threshold
             return SWITCH_STATUS.ON_ENERGY;
         } else {
@@ -227,19 +266,29 @@ function determineNewSwitchStatus(wattGridUsage, currentWaterTemperature, switch
     }
 }
 
+/**
+ * 
+ * @returns Returns true if the hours between the configured hours else false
+ */
 function isDay() {
     const now = new Date();
     const currentHour = now.getHours();
-    //console.log({currentHour: currentHour, config: CONFIG});
+    //console.log(new Date(), {currentHour: currentHour, config: CONFIG});
     return currentHour >= CONFIG.startHour && currentHour < CONFIG.endHour;
 }
 
+/**
+ * 
+ * @returns not isDay()
+ */
 function isNight() {
     return !isDay();
 }
 
 // start the initial loop
-setImmediate(update);
+if (!DRY_RUN) {
+    setImmediate(update);
+}
 
 
-module.exports = {determineNewSwitchStatus, CONFIG, SWITCH_STATUS, isDay, isNight, setSwitch}
+module.exports = {determineNewSwitchStatus, CONFIG, SWITCH_STATUS, isDay, isNight, setSwitch, HTTP, switch0}
