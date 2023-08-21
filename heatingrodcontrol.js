@@ -1,3 +1,7 @@
+if (process.env.DRY_RUN) {
+    DRY_RUN = true;
+}
+
 if (typeof DRY_RUN === 'undefined') {
     DRY_RUN = false;
 } else {
@@ -31,17 +35,20 @@ const CONFIG = {
     timerPeriodOffLowEnergy: Number(process.env.TIMER_PERIOD_OFF_LOW_ENERGY) || 10 * MINUTE,
     timerPeriodOffHighTemperature: Number(process.env.TIMER_PERIOD_OFF_HIGH_TEMPERATURE) || 60 * MINUTE,
     timerPeriodOffNight: Number(process.env.TIMER_PERIOD_OFF_NIGHT) || 60 * MINUTE,
+    timerPeriodManually: Number(process.env.TIMER_PERIOD_MANUALLY) || 60 * MINUTE,
 };
 
 console.log(new Date(), "CONFIG: ", CONFIG)
 
 const SWITCH_STATUS = {
+    ON_MANUALLY: {position: true, status: 4, message: "On due to manual intervention", timerPeriod: CONFIG.timerPeriodManually},
     ON_FALLBACK: {position: true, status: 3, message: "On due to no value for energy production was available", timerPeriod: CONFIG.timerPeriodOnFallback},
     ON_LOW_TEMPERATURE: {position: true, status: 2, message: "On due to low water temperature", timerPeriod: CONFIG.timerPeriodOnLowTemperature},
     ON_ENERGY: {position: true, status: 1, message: "On due to excess energy", timerPeriod: CONFIG.timerPeriodOnEnergy},
     OFF_LOW_ENERGY: {position: false, status: 0, message: "Off due to not enough energy production", timerPeriod: CONFIG.timerPeriodOffLowEnergy},
     OFF_HIGH_TEMPERATURE: {position: false, status: -1, message: "Off due to high water temperature", timerPeriod: CONFIG.timerPeriodOffHighTemperature},
     OFF_NIGHT: {position: false, status: -2, message: "Off due to time resitrected to day hours", timerPeriod: CONFIG.timerPeriodOffNight},
+    OFF_MANUALLY: {position: false, status: -3, message: "Off due to manual intervention", timerPeriod: CONFIG.timerPeriodManually},
 };
 
 const INFLUX_WATER_TEMPERATURE_LAST = {url: CONFIG.influxBaseUrl + '/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "autogen"."eta_buffer_temperature_sensor_top_celsius" WHERE time >= now() - 5m and time <= now()'};
@@ -139,9 +146,7 @@ function update() {
                 HTTP.get(INFLUX_WATER_TEMPERATURE_LAST.url, INFLUX_REQUEST_HEADER, function(result) {
                     let waterTemperature = getValue(result);
                     let switchStatus = determineNewSwitchStatus(gridUsageMean, gridUsageLast, waterTemperature, switchOn);
-                    sendStatusChange(switchStatus);
-                    setSwitch(switchStatus);
-                    updateTimer(switchStatus);
+                    setNewSwitchStatus(switchStatus);
                 });
             });
         });
@@ -195,6 +200,11 @@ function setSwitch(switchStatus) {
  * @param {SWITCH_STATUS} switchStatus the new status of the switch which is transmitted as json to influx db
  */
 function sendStatusChange(switchStatus) {
+    if(DRY_RUN) {
+        console.log(new Date(), "send status change", switchStatus);
+        return;
+    }
+
     const jsonDataString = JSON.stringify(switchStatus);
 
     // HTTP request options
@@ -232,6 +242,16 @@ function sendStatusChange(switchStatus) {
 
     // Finish the request
     request.end();
+}
+
+/**
+ * Sends a status update to telegraf to write it into influx db
+ * @param {SWITCH_STATUS} switchStatus the new status to be set
+ */
+function setNewSwitchStatus(switchStatus) {
+    sendStatusChange(switchStatus);
+    setSwitch(switchStatus);
+    updateTimer(switchStatus);
 }
 
 /**
@@ -301,4 +321,4 @@ if (!DRY_RUN) {
 }
 
 
-module.exports = {determineNewSwitchStatus, CONFIG, SWITCH_STATUS, isDay, isNight, setSwitch, HTTP, switch0}
+module.exports = {update, determineNewSwitchStatus, setNewSwitchStatus, CONFIG, SWITCH_STATUS, isDay, isNight, setSwitch, HTTP, switch0}
