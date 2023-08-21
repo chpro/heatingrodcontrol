@@ -6,34 +6,46 @@ if (typeof DRY_RUN === 'undefined') {
 
 const http = require('node:http');
 
-const TIG_HOST = "tig";
-const INFLUX_BASE_URL = "http://" + TIG_HOST + ":8086"
-const INFLUX_TOKEN = process.env.INFLUX_TOKEN;
-
 const MINUTE = 1000*60;
-const SWITCH_STATUS = {
-    ON_FALLBACK: {position: true, status: 3, message: "On due to no value for energy production was available", timerPeriod: 60 * MINUTE},
-    ON_LOW_TEMPERATURE: {position: true, status: 2, message: "On due to low water temperature", timerPeriod: 60 * MINUTE},
-    ON_ENERGY: {position: true, status: 1, message: "On due to excess energy", timerPeriod: MINUTE / 2},
-    OFF_LOW_ENERGY: {position: false, status: 0, message: "Off due to not enough energy production", timerPeriod: 10 * MINUTE},
-    OFF_HIGH_TEMPERATURE: {position: false, status: -1, message: "Off due to high water temperature", timerPeriod: 60 * MINUTE},
-    OFF_NIGHT: {position: false, status: -2, message: "Off due to time resitrected to day hours", timerPeriod: 60 * MINUTE},
-};
-
 const CONFIG = {
-    wattThresholdToSwitchOn: 3000,
-    wattThresholdToSwitchOff: 0,
-    minWaterTemperature: 45,
-    maxWaterTemperature: 70,
+    wattThresholdToSwitchOn: Number(process.env.WATT_THRESHOLD_TO_SWITCH_ON) || 3000,
+    wattThresholdToSwitchOff: Number(process.env.WATT_THRESHOLD_TO_SWITCH_OFF) || 0,
+    minWaterTemperature: Number(process.env.MIN_WATER_TEMPERATURE) || 40,
+    maxWaterTemperature: Number(process.env.MAX_WATER_TEMPERATURE) || 70,
     // the time in which span
-    startHour: 6,
-    endHour: 19,
+    startHour: Number(process.env.START_HOUR) || 6,
+    endHour: Number(process.env.END_HOUR) || 19,
+
+    // INFLUX host and tokens
+    influxHost: process.env.INFLUX_HOST || "tig",
+    influxBaseUrl: process.env.INFLUX_BASE_URL || "http://" + this.influxHost + ":8086",
+    influxToken: process.env.INFLUX_TOKEN,
+
+    // shelly switch
+    switch0Host: process.env.SWITCH0_HOST || "heatingrod.localdomain",
+
+    // timer periods are given in milliseconds
+    timerPeriodOnFallback: Number(process.env.TIMER_PERIOD_ON_FALLBACK) || 10 * MINUTE,
+    timerPeriodOnLowTemperature: Number(process.env.TIMER_PERIOD_ON_LOW_TEMPERATURE) || 30 * MINUTE,
+    timerPeriodOnEnergy: Number(process.env.TIMER_PERIOD_ON_ENERGY) || MINUTE / 2,
+    timerPeriodOffLowEnergy: Number(process.env.TIMER_PERIOD_OFF_LOW_ENERGY) || 10 * MINUTE,
+    timerPeriodOffHighTemperature: Number(process.env.TIMER_PERIOD_OFF_HIGH_TEMPERATURE) || 60 * MINUTE,
+    timerPeriodOffNight: Number(process.env.TIMER_PERIOD_OFF_NIGHT) || 60 * MINUTE,
 };
 
-const INFLUX_WATER_TEMPERATURE_LAST = {url: INFLUX_BASE_URL + '/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "autogen"."eta_buffer_temperature_sensor_top_celsius" WHERE time >= now() - 5m and time <= now()'};
-const INFLUX_GRID_USAGE_LAST = {url: INFLUX_BASE_URL + '/query?pretty=true&db=inverter&q=SELECT last("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 5m and time <= now()'};
-const INFLUX_GRID_USAGE_MEAN = {url: INFLUX_BASE_URL + '/query?pretty=true&db=inverter&q=SELECT mean("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 10m and time <= now()'};
-const INFLUX_REQUEST_HEADER = {"Authorization" : "Token " + INFLUX_TOKEN};
+const SWITCH_STATUS = {
+    ON_FALLBACK: {position: true, status: 3, message: "On due to no value for energy production was available", timerPeriod: CONFIG.timerPeriodOnFallback},
+    ON_LOW_TEMPERATURE: {position: true, status: 2, message: "On due to low water temperature", timerPeriod: CONFIG.timerPeriodOnLowTemperature},
+    ON_ENERGY: {position: true, status: 1, message: "On due to excess energy", timerPeriod: CONFIG.timerPeriodOnEnergy},
+    OFF_LOW_ENERGY: {position: false, status: 0, message: "Off due to not enough energy production", timerPeriod: CONFIG.timerPeriodOffLowEnergy},
+    OFF_HIGH_TEMPERATURE: {position: false, status: -1, message: "Off due to high water temperature", timerPeriod: CONFIG.timerPeriodOffHighTemperature},
+    OFF_NIGHT: {position: false, status: -2, message: "Off due to time resitrected to day hours", timerPeriod: CONFIG.timerPeriodOffNight},
+};
+
+const INFLUX_WATER_TEMPERATURE_LAST = {url: CONFIG.influxBaseUrl + '/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "autogen"."eta_buffer_temperature_sensor_top_celsius" WHERE time >= now() - 5m and time <= now()'};
+const INFLUX_GRID_USAGE_LAST = {url: CONFIG.influxBaseUrl + '/query?pretty=true&db=inverter&q=SELECT last("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 5m and time <= now()'};
+const INFLUX_GRID_USAGE_MEAN = {url: CONFIG.influxBaseUrl + '/query?pretty=true&db=inverter&q=SELECT mean("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 10m and time <= now()'};
+const INFLUX_REQUEST_HEADER = {"Authorization" : "Token " + CONFIG.influxToken};
 
 const ShellySwitch = {
     turnOn: function () {
@@ -52,7 +64,6 @@ const ShellySwitch = {
         });
     },
 };
-
 
 const HTTP = {
     get: function(url, header, callback) {
@@ -102,15 +113,14 @@ const HTTP = {
     }
 };
 
-
-function getSwitch(id) {
+function getSwitch(id, host) {
     let o = Object.create(ShellySwitch);
     o.id = id;
-    o.host = "heatingrod.localdomain"
+    o.host = host
     return o;
 };
 
-let switch0 = getSwitch(0);
+let switch0 = getSwitch(0, CONFIG.switch0Host);
 
 // holds the handle for the recurring timer to clear it when new one is scheduled
 let executionTimer;
