@@ -32,6 +32,8 @@ assert(-1000, 0, hrc.SWITCH_STATUS.ON_LOW_TEMPERATURE)
 assert(excessEnergyUnderThreshold, 0, hrc.SWITCH_STATUS.ON_LOW_TEMPERATURE)
 assert(excessEnergyOverThreshold, 0, hrc.SWITCH_STATUS.ON_LOW_TEMPERATURE)
 assert(0, minWaterTemperature +1, hrc.SWITCH_STATUS.OFF_LOW_ENERGY)
+assert(null, null, hrc.SWITCH_STATUS.ON_FALLBACK)
+assert(excessEnergyThreshold, null, hrc.SWITCH_STATUS.ON_ENERGY)
 assertMeanLast(null, null, minWaterTemperature - 1, hrc.SWITCH_STATUS.ON_LOW_TEMPERATURE, false)
 console.log("test watt threshold")
 assert(excessEnergyUnderThreshold, minWaterTemperature + 1, hrc.SWITCH_STATUS.OFF_LOW_ENERGY)
@@ -52,6 +54,9 @@ assertMeanLast(excessEnergyUnderThreshold, excessEnergyOverThreshold, minWaterTe
 assertMeanLast(excessEnergyOverThreshold, excessEnergyUnderThreshold, minWaterTemperature + 1, hrc.SWITCH_STATUS.OFF_LOW_ENERGY, false)
 assertMeanLast(excessEnergyUnderThreshold, excessEnergyUnderThreshold, minWaterTemperature + 1, hrc.SWITCH_STATUS.OFF_LOW_ENERGY, false)
 assertMeanLast(excessEnergyOverThreshold, excessEnergyOverThreshold, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_ENERGY, false)
+
+assertMeanLast(excessEnergyUnderThreshold, excessEnergyUnderThreshold, minWaterTemperature + 1, hrc.SWITCH_STATUS.OFF_LOW_ENERGY, null)
+assertMeanLast(excessEnergyOverThreshold, excessEnergyOverThreshold, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_ENERGY, null)
 
 assertMeanLast(excessEnergyOverThreshold, -1, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_ENERGY, true)
 assertMeanLast(excessEnergyOverThreshold, + 1, minWaterTemperature + 1, hrc.SWITCH_STATUS.OFF_LOW_ENERGY, true)
