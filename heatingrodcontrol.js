@@ -197,7 +197,7 @@ function sendStatusChange(switchStatus) {
 
     // HTTP request options
     const options = {
-        hostname: TIG_HOST,
+        hostname: CONFIG.influxHost,
         port: 9001,
         path: '/telegraf',
         method: 'POST',
