@@ -1,11 +1,20 @@
 if (process.env.DRY_RUN) {
-    DRY_RUN = true;
+    DRY_RUN = (process.env.DRY_RUN.toLowerCase() === "true");
 }
 
 if (typeof DRY_RUN === 'undefined') {
     DRY_RUN = false;
-} else {
-    DRY_RUN ? console.log(new Date(), "Executing dry run ... No switch status will be set. No timers will be scheduled.") : "";
+}
+
+// timer disabling can only be done within a dry run
+RUN_WITH_TIMER = true;
+if (DRY_RUN) {
+    if (process.env.RUN_WITH_TIMER) {
+        RUN_WITH_TIMER = (process.env.RUN_WITH_TIMER.toLowerCase() === "true");
+    } else {
+        RUN_WITH_TIMER = false;
+    }
+    console.log(new Date(), "Executing dry run with timers " + (RUN_WITH_TIMER ? "enabled": "disabled"));
 }
 
 const http = require('node:http');
@@ -16,6 +25,7 @@ const CONFIG = {
     wattThresholdToSwitchOff: Number(process.env.WATT_THRESHOLD_TO_SWITCH_OFF) || 0,
     minWaterTemperature: Number(process.env.MIN_WATER_TEMPERATURE) || 40,
     maxWaterTemperature: Number(process.env.MAX_WATER_TEMPERATURE) || 70,
+    maxWaterTemperatureDelta: Number(process.env.MAX_WATER_TEMPERATURE_DELTA) || 2,
     // the time in which span
     startHour: Number(process.env.START_HOUR) || 6,
     endHour: Number(process.env.END_HOUR) || 19,
@@ -33,7 +43,7 @@ const CONFIG = {
     timerPeriodOnLowTemperature: Number(process.env.TIMER_PERIOD_ON_LOW_TEMPERATURE) || 30 * MINUTE,
     timerPeriodOnEnergy: Number(process.env.TIMER_PERIOD_ON_ENERGY) || MINUTE / 2,
     timerPeriodOffLowEnergy: Number(process.env.TIMER_PERIOD_OFF_LOW_ENERGY) || 10 * MINUTE,
-    timerPeriodOffHighTemperature: Number(process.env.TIMER_PERIOD_OFF_HIGH_TEMPERATURE) || 60 * MINUTE,
+    timerPeriodOffHighTemperature: Number(process.env.TIMER_PERIOD_OFF_HIGH_TEMPERATURE) || 10 * MINUTE,
     timerPeriodOffNight: Number(process.env.TIMER_PERIOD_OFF_NIGHT) || 60 * MINUTE,
     timerPeriodManually: Number(process.env.TIMER_PERIOD_MANUALLY) || 60 * MINUTE,
 };
@@ -176,12 +186,14 @@ function getValue(result) {
  * @param {SWITCH_STATUS} switchStatus the new status of the switch which holds also the delay for the interval timer
  */
 function updateTimer(switchStatus) {
+    if (!RUN_WITH_TIMER) {
+        console.log(new Date(), "Dry run. not setting any timers")
+        return;
+    }
     if (executionTimer) {
         clearInterval(executionTimer);
     }
-    if (!DRY_RUN) {
-        executionTimer = setInterval(update, switchStatus.timerPeriod);
-    }
+    executionTimer = setInterval(update, switchStatus.timerPeriod);
 }
 
 /**
@@ -189,10 +201,12 @@ function updateTimer(switchStatus) {
  * @param {SWITCH_STATUS} switchStatus the new status of the switch which holds also the new swicht postion
  */
 function setSwitch(switchStatus) {
-    console.log(new Date(), "New switchs status: " , switchStatus);
-    if (!DRY_RUN) {
-        switch0.set(switchStatus.position);
+    if (DRY_RUN) {
+        console.log(new Date(), "Dry run. not setting switch status", switchStatus)
+        return;
     }
+    console.log(new Date(), "New switchs status: " , switchStatus);
+    switch0.set(switchStatus.position);
 }
 
 /**
@@ -201,7 +215,7 @@ function setSwitch(switchStatus) {
  */
 function sendStatusChange(switchStatus) {
     if(DRY_RUN) {
-        console.log(new Date(), "send status change", switchStatus);
+        console.log(new Date(), "Dry run. not sending status change", switchStatus);
         return;
     }
 
@@ -268,7 +282,10 @@ function determineNewSwitchStatus(wattGridUsageMean, wattGridUsageLast, currentW
         return SWITCH_STATUS.OFF_NIGHT;
     }
 
-    if (currentWaterTemperature !== null && currentWaterTemperature >= CONFIG.maxWaterTemperature) {
+    // turn on again only if CONFIG.maxWaterTemperatureDelta is reached
+    if (switchOn && currentWaterTemperature !== null && currentWaterTemperature >= CONFIG.maxWaterTemperature) {
+        return SWITCH_STATUS.OFF_HIGH_TEMPERATURE;
+    } else if (!switchOn && currentWaterTemperature !== null && currentWaterTemperature >= CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta) {
         return SWITCH_STATUS.OFF_HIGH_TEMPERATURE;
     }
     
@@ -316,8 +333,10 @@ function isNight() {
 }
 
 // start the initial loop
-if (!DRY_RUN) {
+if (RUN_WITH_TIMER) {
     setImmediate(update);
+} else {
+    console.log(new Date(), "Dry run. not starting initial loop");
 }
 
 

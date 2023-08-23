@@ -7,13 +7,18 @@ let excessEnergyOverThreshold = excessEnergyThreshold - 1;
 let excessEnergyUnderThreshold   = excessEnergyThreshold + 1;
 let minWaterTemperature = hrc.CONFIG.minWaterTemperature;
 
-let defaultStatus = null;
-if (hrc.isNight()) {
-    console.log("It is night all combinations return ", hrc.SWITCH_STATUS.OFF_NIGHT)
-    assert(excessEnergyOverThreshold, hrc.CONFIG.maxWaterTemperature + 1, hrc.SWITCH_STATUS.OFF_NIGHT);
-    assert(excessEnergyOverThreshold, minWaterTemperature +1, hrc.SWITCH_STATUS.OFF_NIGHT)
-    defaultStatus = hrc.SWITCH_STATUS.OFF_NIGHT;
-}
+// siwtich to always night
+hrc.CONFIG.startHour = 24
+hrc.CONFIG.endHour = 24
+
+console.log("It is night all combinations return status OFF_NIGHT")
+assert(excessEnergyOverThreshold, hrc.CONFIG.maxWaterTemperature + 1, hrc.SWITCH_STATUS.OFF_NIGHT);
+assert(excessEnergyOverThreshold, minWaterTemperature +1, hrc.SWITCH_STATUS.OFF_NIGHT)
+
+
+// switch to always day mode
+hrc.CONFIG.startHour = -1
+hrc.CONFIG.endHour = 24
 
 console.log("test switch off")
 console.log("test max water temperature")
@@ -21,8 +26,25 @@ assert(excessEnergyOverThreshold, hrc.CONFIG.maxWaterTemperature + 1, hrc.SWITCH
 assert(excessEnergyOverThreshold, hrc.CONFIG.maxWaterTemperature, hrc.SWITCH_STATUS.OFF_HIGH_TEMPERATURE);
 assert(excessEnergyThreshold, hrc.CONFIG.maxWaterTemperature, hrc.SWITCH_STATUS.OFF_HIGH_TEMPERATURE);
 assert(excessEnergyUnderThreshold, hrc.CONFIG.maxWaterTemperature, hrc.SWITCH_STATUS.OFF_HIGH_TEMPERATURE);
-assert(excessEnergyOverThreshold, hrc.CONFIG.maxWaterTemperature - 1, hrc.SWITCH_STATUS.ON_ENERGY);
-assert(excessEnergyUnderThreshold, hrc.CONFIG.maxWaterTemperature - 1, hrc.SWITCH_STATUS.OFF_LOW_ENERGY);
+assert(excessEnergyOverThreshold, hrc.CONFIG.maxWaterTemperature - hrc.CONFIG.maxWaterTemperatureDelta - 1, hrc.SWITCH_STATUS.ON_ENERGY);
+assert(excessEnergyUnderThreshold, hrc.CONFIG.maxWaterTemperature - hrc.CONFIG.maxWaterTemperatureDelta - 1, hrc.SWITCH_STATUS.OFF_LOW_ENERGY);
+console.log("test max water temperature delta")
+assertMeanLast(excessEnergyOverThreshold, -1, hrc.CONFIG.maxWaterTemperature - hrc.CONFIG.maxWaterTemperatureDelta - 1, hrc.SWITCH_STATUS.ON_ENERGY, true)
+assertMeanLast(excessEnergyOverThreshold, -1, hrc.CONFIG.maxWaterTemperature - hrc.CONFIG.maxWaterTemperatureDelta, hrc.SWITCH_STATUS.ON_ENERGY, true)
+assertMeanLast(excessEnergyOverThreshold, -1, hrc.CONFIG.maxWaterTemperature - (hrc.CONFIG.maxWaterTemperatureDelta/2), hrc.SWITCH_STATUS.ON_ENERGY, true)
+assertMeanLast(excessEnergyOverThreshold, +1, hrc.CONFIG.maxWaterTemperature - (hrc.CONFIG.maxWaterTemperatureDelta), hrc.SWITCH_STATUS.OFF_LOW_ENERGY, true)
+assertMeanLast(excessEnergyOverThreshold, +1, hrc.CONFIG.maxWaterTemperature - (hrc.CONFIG.maxWaterTemperatureDelta/2), hrc.SWITCH_STATUS.OFF_LOW_ENERGY, true)
+assertMeanLast(excessEnergyOverThreshold, +1, hrc.CONFIG.maxWaterTemperature, hrc.SWITCH_STATUS.OFF_HIGH_TEMPERATURE, true)
+
+assertMeanLast(excessEnergyOverThreshold, -1, hrc.CONFIG.maxWaterTemperature - hrc.CONFIG.maxWaterTemperatureDelta - 1, hrc.SWITCH_STATUS.OFF_LOW_ENERGY, false)
+assertMeanLast(excessEnergyOverThreshold, excessEnergyOverThreshold, hrc.CONFIG.maxWaterTemperature - hrc.CONFIG.maxWaterTemperatureDelta - 1, hrc.SWITCH_STATUS.ON_ENERGY, false)
+assertMeanLast(excessEnergyOverThreshold, +1, hrc.CONFIG.maxWaterTemperature, hrc.SWITCH_STATUS.OFF_HIGH_TEMPERATURE, false)
+assertMeanLast(excessEnergyOverThreshold, -1, hrc.CONFIG.maxWaterTemperature - hrc.CONFIG.maxWaterTemperatureDelta, hrc.SWITCH_STATUS.OFF_HIGH_TEMPERATURE, false)
+assertMeanLast(excessEnergyOverThreshold, -1, hrc.CONFIG.maxWaterTemperature - (hrc.CONFIG.maxWaterTemperatureDelta/2), hrc.SWITCH_STATUS.OFF_HIGH_TEMPERATURE, false)
+assertMeanLast(excessEnergyOverThreshold, +1, hrc.CONFIG.maxWaterTemperature - (hrc.CONFIG.maxWaterTemperatureDelta), hrc.SWITCH_STATUS.OFF_HIGH_TEMPERATURE, false)
+assertMeanLast(excessEnergyOverThreshold, +1, hrc.CONFIG.maxWaterTemperature - (hrc.CONFIG.maxWaterTemperatureDelta/2), hrc.SWITCH_STATUS.OFF_HIGH_TEMPERATURE, false)
+
+
 console.log("test min water temperature")
 assert(0, minWaterTemperature, hrc.SWITCH_STATUS.ON_LOW_TEMPERATURE)
 assert(0, minWaterTemperature - 1, hrc.SWITCH_STATUS.ON_LOW_TEMPERATURE)
@@ -77,8 +99,11 @@ hrc.switch0.get(function(result) {
 });
 
 hrc.HTTP.get("http://tig:8086", null, function(result) {
-    console.assert(result === null);
+    console.assert(result === null, "http get call failed");
 });
+
+console.log("execute an update");
+hrc.update();
 
 function assert(wattGridUsage, currentWaterTemperature, expectedResult, switchOn = false) {
     assertMeanLast(wattGridUsage, wattGridUsage, currentWaterTemperature, expectedResult, switchOn);
@@ -87,9 +112,5 @@ function assert(wattGridUsage, currentWaterTemperature, expectedResult, switchOn
 function assertMeanLast(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, expectedResult, switchOn) {
     result = hrc.determineNewSwitchStatus(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, switchOn)
     // this is necessary because in night hours we get different result
-    assertSwitchStatus(result, defaultStatus ? defaultStatus : expectedResult);
-}
-
-function assertSwitchStatus(result, expected) {
-    console.assert(result === expected, "Expected: " + JSON.stringify(expected) + " but got " + JSON.stringify(result));
+    console.assert(result === expectedResult, "Expected: " + JSON.stringify(expectedResult) + " but got " + JSON.stringify(result));
 }
