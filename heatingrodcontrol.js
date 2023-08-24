@@ -82,7 +82,7 @@ const ShellySwitch = {
     get: function(callback) {
         // console.log(new Date(), "Getting switch status: http://" + this.host + "/rpc/Switch.GetStatus?id=" + this.id);
         axios.get("http://" + this.host + "/rpc/Switch.GetStatus?id=" + this.id)
-        .then(function(result) {callback(result === null ? null : result.output === true)})
+        .then(function(result) {callback(result.data === null ? null : result.data.output === true)})
         .catch(err => {
             console.log(new Date(), err);
         });

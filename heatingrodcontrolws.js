@@ -15,6 +15,12 @@ ws.get('/config', (req, res) => {
     res.json({"config": hrc.CONFIG, "status": hrc.SWITCH_STATUS})
 })
 
+ws.get('/switchStatus', (req, res) => {
+    hrc.switch0.get(function(result) {
+        res.json({"Result": result})
+    });
+})
+
 ws.post('/reset', (req, res) => {
     hrc.update()
     res.send()
