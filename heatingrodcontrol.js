@@ -51,14 +51,14 @@ const CONFIG = {
 console.log(new Date(), "CONFIG: ", CONFIG)
 
 const SWITCH_STATUS = {
-    ON_MANUALLY: {position: true, status: 4, message: "On due to manual intervention", timerPeriod: CONFIG.timerPeriodManually},
-    ON_FALLBACK: {position: true, status: 3, message: "On due to no value for energy production was available", timerPeriod: CONFIG.timerPeriodOnFallback},
-    ON_LOW_TEMPERATURE: {position: true, status: 2, message: "On due to low water temperature", timerPeriod: CONFIG.timerPeriodOnLowTemperature},
-    ON_ENERGY: {position: true, status: 1, message: "On due to excess energy", timerPeriod: CONFIG.timerPeriodOnEnergy},
-    OFF_LOW_ENERGY: {position: false, status: 0, message: "Off due to not enough energy production", timerPeriod: CONFIG.timerPeriodOffLowEnergy},
-    OFF_HIGH_TEMPERATURE: {position: false, status: -1, message: "Off due to high water temperature", timerPeriod: CONFIG.timerPeriodOffHighTemperature},
-    OFF_NIGHT: {position: false, status: -2, message: "Off due to time resitrected to day hours", timerPeriod: CONFIG.timerPeriodOffNight},
-    OFF_MANUALLY: {position: false, status: -3, message: "Off due to manual intervention", timerPeriod: CONFIG.timerPeriodManually},
+    ON_MANUALLY: {on: true, status: 4, message: "On due to manual intervention", timerPeriod: CONFIG.timerPeriodManually},
+    ON_FALLBACK: {on: true, status: 3, message: "On due to no value for energy production was available", timerPeriod: CONFIG.timerPeriodOnFallback},
+    ON_LOW_TEMPERATURE: {on: true, status: 2, message: "On due to low water temperature", timerPeriod: CONFIG.timerPeriodOnLowTemperature},
+    ON_ENERGY: {on: true, status: 1, message: "On due to excess energy", timerPeriod: CONFIG.timerPeriodOnEnergy},
+    OFF_LOW_ENERGY: {on: false, status: 0, message: "Off due to not enough energy production", timerPeriod: CONFIG.timerPeriodOffLowEnergy},
+    OFF_HIGH_TEMPERATURE: {on: false, status: -1, message: "Off due to high water temperature", timerPeriod: CONFIG.timerPeriodOffHighTemperature},
+    OFF_NIGHT: {on: false, status: -2, message: "Off due to time resitrected to day hours", timerPeriod: CONFIG.timerPeriodOffNight},
+    OFF_MANUALLY: {on: false, status: -3, message: "Off due to manual intervention", timerPeriod: CONFIG.timerPeriodManually},
 };
 
 const INFLUX_WATER_TEMPERATURE_LAST = {url: CONFIG.influxBaseUrl + '/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "autogen"."eta_buffer_temperature_sensor_top_celsius" WHERE time >= now() - 5m and time <= now()'};
@@ -73,8 +73,8 @@ const ShellySwitch = {
     turnOff: function () {
         set(false);
     },
-    set: function (position) {
-        axios.get("http://" + this.host + "/rpc/Switch.Set?id=" + this.id + "&on=" + position)
+    set: function (on) {
+        axios.get("http://" + this.host + "/rpc/Switch.Set?id=" + this.id + "&on=" + on)
         .catch(err => {
             console.log(new Date(), err);
         });
@@ -166,7 +166,7 @@ function setSwitch(switchStatus) {
         return;
     }
     console.log(new Date(), "New switchs status: " , switchStatus);
-    switch0.set(switchStatus.position);
+    switch0.set(switchStatus.on);
 }
 
 /**
