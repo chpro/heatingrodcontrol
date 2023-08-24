@@ -17,7 +17,7 @@ if (DRY_RUN) {
     console.log(new Date(), "Executing dry run with timers " + (RUN_WITH_TIMER ? "enabled": "disabled"));
 }
 
-const http = require('node:http');
+const axios = require('axios');
 
 const MINUTE = 1000*60;
 const CONFIG = {
@@ -74,62 +74,19 @@ const ShellySwitch = {
         set(false);
     },
     set: function (position) {
-        HTTP.get("http://" + this.host + "/rpc/Switch.Set?id=" + this.id + "&on=" + position);
+        axios.get("http://" + this.host + "/rpc/Switch.Set?id=" + this.id + "&on=" + position)
+        .catch(err => {
+            console.log(new Date(), err);
+        });
     },
     get: function(callback) {
         // console.log(new Date(), "Getting switch status: http://" + this.host + "/rpc/Switch.GetStatus?id=" + this.id);
-        HTTP.get("http://" + this.host + "/rpc/Switch.GetStatus?id=" + this.id, null, (result) => {
-            callback(result === null ? null : result.output === true);
+        axios.get("http://" + this.host + "/rpc/Switch.GetStatus?id=" + this.id)
+        .then(function(result) {callback(result === null ? null : result.output === true)})
+        .catch(err => {
+            console.log(new Date(), err);
         });
     },
-};
-
-const HTTP = {
-    get: function(url, header, callback) {
-        http.get(url, {headers: header}, (res) => {
-        const { statusCode } = res;
-        const contentType = res.headers['content-type'];
-
-        let error;
-        // Any 2xx status code signals a successful response but
-        // here we're only checking for 200.
-        if (statusCode !== 200) {
-            error = new Error('Request Failed.\n' +
-                            `Status Code: ${statusCode}`);
-        }
-        if (error) {
-            console.error(new Date(), `Got error: ${error.message}`);
-            // Consume response data to free up memory
-            res.resume();
-            if (callback) {
-                callback(null);
-            }
-            return;
-        }
-
-        res.setEncoding('utf8');
-        let rawData = '';
-        res.on('data', (chunk) => { rawData += chunk; });
-        res.on('end', () => {
-            try {
-                const parsedData = JSON.parse(rawData);
-                if (callback) {
-                    callback(parsedData);
-                }
-            } catch (e) {
-                console.error(new Date(), `Got error: ${e.message}`);
-                if (callback) {
-                    callback(null);
-                }
-            }
-        });
-        }).on('error', (e) => {
-            console.error(new Date(), `Got error: ${e.message}`);
-            if (callback) {
-                callback(null);
-            }
-        });
-    }
 };
 
 function getSwitch(id, host) {
@@ -149,16 +106,19 @@ let executionTimer;
  */
 function update() {
     switch0.get(function(switchOn) {
-        HTTP.get(INFLUX_GRID_USAGE_LAST.url, INFLUX_REQUEST_HEADER, function(result) {
-            let gridUsageLast = getValue(result);
-            HTTP.get(INFLUX_GRID_USAGE_MEAN.url, INFLUX_REQUEST_HEADER, function(result) {
-                let gridUsageMean = getValue(result);
-                HTTP.get(INFLUX_WATER_TEMPERATURE_LAST.url, INFLUX_REQUEST_HEADER, function(result) {
-                    let waterTemperature = getValue(result);
-                    let switchStatus = determineNewSwitchStatus(gridUsageMean, gridUsageLast, waterTemperature, switchOn);
-                    setNewSwitchStatus(switchStatus);
-                });
-            });
+        axios.all([
+            axios.get(INFLUX_GRID_USAGE_LAST.url, {headers: INFLUX_REQUEST_HEADER}),
+            axios.get(INFLUX_GRID_USAGE_MEAN.url, {headers: INFLUX_REQUEST_HEADER}),
+            axios.get(INFLUX_WATER_TEMPERATURE_LAST.url, {headers: INFLUX_REQUEST_HEADER}),
+        ]).then(
+            axios.spread((res1, res2, res3) => {
+            let gridUsageLast = getValue(res1.data);
+            let gridUsageMean = getValue(res2.data);
+            let waterTemperature = getValue(res3.data);
+            let switchStatus = determineNewSwitchStatus(gridUsageMean, gridUsageLast, waterTemperature, switchOn);
+            setNewSwitchStatus(switchStatus);
+        })).catch(err => {
+            console.log(new Date(), err);
         });
     });
 }
@@ -219,43 +179,10 @@ function sendStatusChange(switchStatus) {
         return;
     }
 
-    const jsonDataString = JSON.stringify(switchStatus);
-
-    // HTTP request options
-    const options = {
-        hostname: CONFIG.influxHost,
-        port: 9001,
-        path: '/telegraf',
-        method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(jsonDataString)
-            }
-    };
-
-    // Create the HTTP request
-    const request = http.request(options, (response) => {
-    let data = '';
-
-    response.on('data', (chunk) => {
-        data += chunk;
+    axios.post(`http://${CONFIG.influxHost}:9001/telegraf`, switchStatus)
+    .catch(err => {
+        console.log(new Date(), err);
     });
-
-    response.on('end', () => {
-        console.log(new Date(), 'Response:', data);
-    });
-    });
-
-    // Handle errors
-    request.on('error', (error) => {
-        console.error(new Date(), 'Error:', error);
-    });
-
-    // Send the JSON data in the request body
-    request.write(jsonDataString);
-
-    // Finish the request
-    request.end();
 }
 
 /**
@@ -348,4 +275,4 @@ if (RUN_WITH_TIMER) {
 }
 
 
-module.exports = {update, determineNewSwitchStatus, setNewSwitchStatus, CONFIG, SWITCH_STATUS, isDay, isNight, setSwitch, HTTP, switch0}
+module.exports = {update, determineNewSwitchStatus, setNewSwitchStatus, CONFIG, SWITCH_STATUS, isDay, isNight, setSwitch, switch0}

@@ -98,10 +98,6 @@ hrc.switch0.get(function(result) {
     console.assert(result !== null, "http get call failed");
 });
 
-hrc.HTTP.get("http://tig:8086", null, function(result) {
-    console.assert(result === null, "http get call failed");
-});
-
 console.log("execute an update");
 hrc.update();
 
