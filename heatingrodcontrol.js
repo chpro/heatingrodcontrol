@@ -282,23 +282,31 @@ function determineNewSwitchStatus(wattGridUsageMean, wattGridUsageLast, currentW
         return SWITCH_STATUS.OFF_NIGHT;
     }
 
-    // turn on again only if CONFIG.maxWaterTemperatureDelta is reached
-    if (switchOn && currentWaterTemperature !== null && currentWaterTemperature >= CONFIG.maxWaterTemperature) {
-        return SWITCH_STATUS.OFF_HIGH_TEMPERATURE;
-    } else if (!switchOn && currentWaterTemperature !== null && currentWaterTemperature >= CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta) {
-        return SWITCH_STATUS.OFF_HIGH_TEMPERATURE;
-    }
-    
-    if (currentWaterTemperature !== null && currentWaterTemperature <= CONFIG.minWaterTemperature) {
-        return SWITCH_STATUS.ON_LOW_TEMPERATURE;
+    // check water temperature
+    if (currentWaterTemperature !== null) {
+        // turn off if maxWaterTemperature is reached
+        if (switchOn && currentWaterTemperature >= CONFIG.maxWaterTemperature) {
+            return SWITCH_STATUS.OFF_HIGH_TEMPERATURE;
+        } 
+
+        // keep turned off till the water cooled down by by maxWaterTemperatureDelta
+        if (!switchOn && currentWaterTemperature >= CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta) {
+            return SWITCH_STATUS.OFF_HIGH_TEMPERATURE;
+        }
+
+        // turn on if water is too cold
+        if (currentWaterTemperature <= CONFIG.minWaterTemperature) {
+            return SWITCH_STATUS.ON_LOW_TEMPERATURE;
+        }
     }
 
+    // turn on if no information about energy production is available
     if (wattGridUsageMean === null || wattGridUsageLast === null) {
         return SWITCH_STATUS.ON_FALLBACK;
     }
     
     // check if enough solar power is available
-    if (wattGridUsageLast < 0) { // feed power into grid
+    if (wattGridUsageLast < 0) { // feed power into grid. check if < 0 because of Math.abs logic
         if (switchOn && Math.abs(wattGridUsageLast) >= CONFIG.wattThresholdToSwitchOff) {
             // as long some energy is feed in keep it on
             return SWITCH_STATUS.ON_ENERGY;
@@ -308,7 +316,7 @@ function determineNewSwitchStatus(wattGridUsageMean, wattGridUsageLast, currentW
         } else {
             return SWITCH_STATUS.OFF_LOW_ENERGY;
         }
-    } else {
+    } else { // no power feed to grid 
         return SWITCH_STATUS.OFF_LOW_ENERGY;
     }
 }
