@@ -1,3 +1,5 @@
+const assertlib = require('assert');
+
 DRY_RUN = true;
 
 const hrc = require('./heatingrodcontrol');
@@ -7,7 +9,11 @@ let excessEnergyOverThreshold = excessEnergyThreshold - 1;
 let excessEnergyUnderThreshold   = excessEnergyThreshold + 1;
 let minWaterTemperature = hrc.CONFIG.minWaterTemperature;
 
-// siwtich to always night
+// fallback to always on
+hrc.CONFIG.startHourFallback = -1
+hrc.CONFIG.endHourFallback = 24
+
+// switch to always night
 hrc.CONFIG.startHour = 24
 hrc.CONFIG.endHour = 24
 
@@ -86,16 +92,43 @@ assertMeanLast(-1, -1, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_ENERGY, tru
 assertMeanLast(-1, 1, minWaterTemperature + 1, hrc.SWITCH_STATUS.OFF_LOW_ENERGY, true)
 
 // check fallback status
+console.log("test fallback status for no grid usage info")
 assertMeanLast(null, 0, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_FALLBACK, true)
 assertMeanLast(0, null, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_FALLBACK, true)
 assertMeanLast(null, 0, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_FALLBACK, false)
 assertMeanLast(0, null, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_FALLBACK, false)
 assertMeanLast(null, null, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_FALLBACK, false)
 
+assertMeanLast(null, null, hrc.CONFIG.maxWaterTemperatureFallback + 1, hrc.SWITCH_STATUS.OFF_FALLBACK, false)
+assertMeanLast(null, null, hrc.CONFIG.maxWaterTemperatureFallback - 1, hrc.SWITCH_STATUS.OFF_FALLBACK, false)
+assertMeanLast(null, null, hrc.CONFIG.maxWaterTemperatureFallback - 1, hrc.SWITCH_STATUS.ON_FALLBACK, true)
+
+// check forecast
+console.log("test forecast")
+assertMeanLast(null, null, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_FALLBACK, false, {value: hrc.CONFIG.wattThresholdToSwitchOn - 10, time: new Date("2023-08-29T11:00:00Z")})
+assertMeanLast(excessEnergyOverThreshold, excessEnergyOverThreshold, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_ENERGY, false, {value: hrc.CONFIG.wattThresholdToSwitchOn - 10, time: new Date("2023-08-29T11:00:00Z")})
+assertMeanLast(excessEnergyUnderThreshold, excessEnergyUnderThreshold, hrc.CONFIG.maxWaterTemperatureFallback - hrc.CONFIG.maxWaterTemperatureDelta - 1, hrc.SWITCH_STATUS.ON_FORECAST, false, {value: hrc.CONFIG.wattThresholdToSwitchOn - 10, time: new Date("2023-08-29T11:00:00Z")})
+assertMeanLast(excessEnergyUnderThreshold + wattThreshold, excessEnergyUnderThreshold + wattThreshold, minWaterTemperature + 1, hrc.SWITCH_STATUS.OFF_FORECAST, false, {value: hrc.CONFIG.wattThresholdToSwitchOn - 10, time: new Date("2023-08-29T11:00:00Z")})
+assertMeanLast(excessEnergyOverThreshold + wattThreshold, excessEnergyOverThreshold + wattThreshold, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_FORECAST, false, {value: hrc.CONFIG.wattThresholdToSwitchOn - 10, time: new Date("2023-08-29T11:00:00Z")})
+assertMeanLast(excessEnergyOverThreshold + wattThreshold, excessEnergyOverThreshold + wattThreshold, hrc.CONFIG.maxWaterTemperatureFallback + 1, hrc.SWITCH_STATUS.OFF_LOW_ENERGY, false, {value: hrc.CONFIG.wattThresholdToSwitchOn - 10, time: new Date("2023-08-29T11:00:00Z")})
+
+assertMeanLast(excessEnergyUnderThreshold + hrc.CONFIG.wattThresholdToSwitchOn, excessEnergyUnderThreshold + hrc.CONFIG.wattThresholdToSwitchOn, hrc.CONFIG.maxWaterTemperatureFallback - 1, hrc.SWITCH_STATUS.ON_FORECAST, true, {value: hrc.CONFIG.wattThresholdToSwitchOn - 10, time: new Date("2023-08-29T11:00:00Z")})
+assertMeanLast(excessEnergyUnderThreshold + hrc.CONFIG.wattThresholdToSwitchOn*2, excessEnergyUnderThreshold + hrc.CONFIG.wattThresholdToSwitchOn*2, hrc.CONFIG.maxWaterTemperatureFallback - 1, hrc.SWITCH_STATUS.OFF_FORECAST, true, {value: hrc.CONFIG.wattThresholdToSwitchOn - 10, time: new Date("2023-08-29T11:00:00Z")})
+assertMeanLast(excessEnergyUnderThreshold + hrc.CONFIG.wattThresholdToSwitchOn*2, excessEnergyUnderThreshold + hrc.CONFIG.wattThresholdToSwitchOn*2, hrc.CONFIG.maxWaterTemperatureFallback - hrc.CONFIG.maxWaterTemperatureDelta- 1, hrc.SWITCH_STATUS.OFF_FORECAST, true, {value: hrc.CONFIG.wattThresholdToSwitchOn - 10, time: new Date("2023-08-29T11:00:00Z")})
+
+
+// fallback to always off
+hrc.CONFIG.startHourFallback = 24
+hrc.CONFIG.endHourFallback = 24
+assertMeanLast(null, null, minWaterTemperature + 1, hrc.SWITCH_STATUS.OFF_FALLBACK, false)
+
+assertMeanLast(excessEnergyOverThreshold, excessEnergyOverThreshold, minWaterTemperature + 1, hrc.SWITCH_STATUS.ON_ENERGY, false, {value: hrc.CONFIG.wattThresholdToSwitchOn - 10, time: new Date("2023-08-29T11:00:00Z")})
+
+
 // check HTTP client
 console.log("checking http get");
 hrc.switch0.get(function(result) {
-    console.assert(result !== null, "http get call failed");
+    assertlib.notEqual(result, null, "http get call failed");
 });
 
 console.log("execute an update");
@@ -105,8 +138,8 @@ function assert(wattGridUsage, currentWaterTemperature, expectedResult, switchOn
     assertMeanLast(wattGridUsage, wattGridUsage, currentWaterTemperature, expectedResult, switchOn);
 }
 
-function assertMeanLast(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, expectedResult, switchOn) {
-    result = hrc.determineNewSwitchStatus(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, switchOn)
-    // this is necessary because in night hours we get different result
-    console.assert(result === expectedResult, "Expected: " + JSON.stringify(expectedResult) + " but got " + JSON.stringify(result));
+function assertMeanLast(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, expectedResult, switchOn, fallback) {
+    result = hrc.determineNewSwitchStatus(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, switchOn, fallback)
+    console.log("                               => Result: " + expectedResult.message)
+    assertlib.equal(result, expectedResult, "Expected: " + JSON.stringify(expectedResult) + " but got " + JSON.stringify(result))
 }
