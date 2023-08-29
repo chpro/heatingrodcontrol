@@ -39,5 +39,3 @@ ws.post('/off', (req, res) => {
 ws.listen(port, () => {
     console.log(new Date(), `Heatingrod webserver is listening on port ${port}`)
 })
-
-module.exports = {ws}
