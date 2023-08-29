@@ -6,6 +6,6 @@ COPY package*.json ./
 
 RUN npm install
 # Bundle app source
-COPY heatingrodcontrol*.js ./
+COPY app ./
 EXPOSE 3000
-CMD [ "node", "heatingrodcontrolws.js" ]
+CMD [ "node", "webservice.js" ]

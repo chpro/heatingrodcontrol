@@ -2,7 +2,7 @@ const assertlib = require('assert');
 
 DRY_RUN = true;
 
-const hrc = require('./heatingrodcontrol');
+const hrc = require('../app/control');
 let wattThreshold = hrc.CONFIG.wattThresholdToSwitchOn;
 let excessEnergyThreshold = wattThreshold * -1;
 let excessEnergyOverThreshold = excessEnergyThreshold - 1;

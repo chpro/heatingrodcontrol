@@ -1,4 +1,4 @@
-const hrc = require('./heatingrodcontrol')
+const hrc = require('./control')
 const express = require('express')
 const cors = require('cors')
 const ws = express()
@@ -39,3 +39,5 @@ ws.post('/off', (req, res) => {
 ws.listen(port, () => {
     console.log(new Date(), `Heatingrod webserver is listening on port ${port}`)
 })
+
+module.exports = {ws}
