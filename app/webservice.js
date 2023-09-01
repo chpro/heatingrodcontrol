@@ -1,4 +1,6 @@
 const hrc = require('./control')
+const CONFIG = require('./config').CONFIG
+const SWITCH_STATUS = require('./switchstatus').SWITCH_STATUS
 const express = require('express')
 const cors = require('cors')
 const ws = express()
@@ -12,7 +14,7 @@ var corsOptions = {
 ws.use(cors(corsOptions))
 
 ws.get('/config', (req, res) => {
-    res.json({"config": hrc.CONFIG, "status": hrc.SWITCH_STATUS})
+    res.json({"config": CONFIG, "status": SWITCH_STATUS})
 })
 
 ws.get('/switchStatus', (req, res) => {
@@ -27,12 +29,12 @@ ws.post('/reset', (req, res) => {
 })
 
 ws.post('/on', (req, res) => {
-    hrc.setNewSwitchStatus(hrc.SWITCH_STATUS.ON_MANUALLY)
+    hrc.setNewSwitchStatus(SWITCH_STATUS.ON_MANUALLY)
     res.send()
 })
 
 ws.post('/off', (req, res) => {
-    hrc.setNewSwitchStatus(hrc.SWITCH_STATUS.OFF_MANUALLY)
+    hrc.setNewSwitchStatus(SWITCH_STATUS.OFF_MANUALLY)
     res.send()
 })
 

@@ -4,5 +4,11 @@
     "cors": "^2.8.5",
     "coverage": "^0.4.1",
     "express": "^4.18.2"
+  },
+  "scripts": {
+    "test": "./node_modules/coverage/index.js test/control.test.js",
+    "prestart": "sudo docker rm heatingrodcontrol;sudo docker build -t heatingrodcontrol:latest-test .",
+    "start": "sudo docker run -d -p 3000:3000 -e TZ=Europe/Vienna -e \"INFLUX_TOKEN=$INFLUX_TOKEN\" -e \"DRY_RUN=true\" -e \"RUN_WITH_TIMER=true\" --name heatingrodcontrol heatingrodcontrol:latest-test",
+    "stop": "sudo docker stop heatingrodcontrol"
   }
 }

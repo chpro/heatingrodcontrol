@@ -18,101 +18,14 @@ if (DRY_RUN) {
 }
 
 const axios = require('axios');
-
-const MINUTE = 1000*60;
-const CONFIG = {
-    wattThresholdToSwitchOn: Number(process.env.WATT_THRESHOLD_TO_SWITCH_ON) || 3000,
-    wattThresholdToSwitchOff: Number(process.env.WATT_THRESHOLD_TO_SWITCH_OFF) || 0,
-    minWaterTemperature: Number(process.env.MIN_WATER_TEMPERATURE) || 40,
-    maxWaterTemperature: Number(process.env.MAX_WATER_TEMPERATURE) || 70,
-    maxWaterTemperatureFallback: Number(process.env.MAX_WATER_TEMPERATURE_FALLBACK) || 60,
-    maxWaterTemperatureDelta: Number(process.env.MAX_WATER_TEMPERATURE_DELTA) || 5,
-    // the time span which normal operation is permitted
-    startHour: Number(process.env.START_HOUR) || 6,
-    endHour: Number(process.env.END_HOUR) || 19,
-
-    // the time span which fallback operation is permitted
-    startHourFallback: Number(process.env.START_HOUR_FALLBACK) || 13,
-    endHourFallback: Number(process.env.END_HOUR_FALLBACK) || 17,
-
-    // INFLUX host and tokens
-    influxHost: process.env.INFLUX_HOST || "tig",
-    influxBaseUrl: process.env.INFLUX_BASE_URL || "http://tig:8086",
-    influxToken: process.env.INFLUX_TOKEN,
-
-    // shelly switch
-    switch0Host: process.env.SWITCH0_HOST || "heatingrod.localdomain",
-
-    // timer periods are given in milliseconds
-    timerPeriodOnFallback: Number(process.env.TIMER_PERIOD_ON_FALLBACK) || MINUTE / 2,
-    timerPeriodOnLowTemperature: Number(process.env.TIMER_PERIOD_ON_LOW_TEMPERATURE) || 30 * MINUTE,
-    timerPeriodOnEnergy: Number(process.env.TIMER_PERIOD_ON_ENERGY) || MINUTE / 2,
-    timerPeriodOffLowEnergy: Number(process.env.TIMER_PERIOD_OFF_LOW_ENERGY) || 10 * MINUTE,
-    timerPeriodOffHighTemperature: Number(process.env.TIMER_PERIOD_OFF_HIGH_TEMPERATURE) || 10 * MINUTE,
-    timerPeriodOffNight: Number(process.env.TIMER_PERIOD_OFF_NIGHT) || 60 * MINUTE,
-    timerPeriodManually: Number(process.env.TIMER_PERIOD_MANUALLY) || 60 * MINUTE,
-    timerPeriodOffFallback: Number(process.env.TIMER_PERIOD_OFF_FALLBACK) || 10 * MINUTE,
-};
+const CONFIG = require('./config').CONFIG
+const SWITCH_STATUS = require('./switchstatus').SWITCH_STATUS
+const ShellySwitch = require('./shellyswitch')
+const dataProvider = require('./influxdataprovider')
 
 console.log(new Date(), "CONFIG: ", CONFIG)
 
-const SWITCH_STATUS = {
-    ON_FORECAST: {on: true, status: 5, message: "On due to forecast fallback operating mode", timerPeriod: CONFIG.timerPeriodOnFallback},
-    ON_FALLBACK: {on: true, status: 4, message: "On due to no value for energy production was available and time within fallback operating hours", timerPeriod: CONFIG.timerPeriodOnFallback},
-    ON_MANUALLY: {on: true, status: 3, message: "On due to manual intervention", timerPeriod: CONFIG.timerPeriodManually},
-    ON_LOW_TEMPERATURE: {on: true, status: 2, message: "On due to low water temperature", timerPeriod: CONFIG.timerPeriodOnLowTemperature},
-    ON_ENERGY: {on: true, status: 1, message: "On due to excess energy", timerPeriod: CONFIG.timerPeriodOnEnergy},
-    OFF_LOW_ENERGY: {on: false, status: 0, message: "Off due to not enough energy production", timerPeriod: CONFIG.timerPeriodOffLowEnergy},
-    OFF_HIGH_TEMPERATURE: {on: false, status: -1, message: "Off due to high water temperature", timerPeriod: CONFIG.timerPeriodOffHighTemperature},
-    OFF_NIGHT: {on: false, status: -2, message: "Off due time outside normal operation hours", timerPeriod: CONFIG.timerPeriodOffNight},
-    OFF_MANUALLY: {on: false, status: -3, message: "Off due to manual intervention", timerPeriod: CONFIG.timerPeriodManually},
-    OFF_FALLBACK: {on: false, status: -4, message: "Off due to no value for energy production was available and time outside fallback operating hours", timerPeriod: CONFIG.timerPeriodOffFallback},
-    OFF_FORECAST: {on: false, status: -5, message: "Off due to too low energy production within the forecast fallback operating mode", timerPeriod: CONFIG.timerPeriodOffFallback},
-};
-
-const INFLUX_FORECAST_PRODUCTION_LAST = function() {
-    let start = new Date();
-    start.setHours(0,0,0,0);
-    let end = new Date();
-    end.setHours(23, 59, 59, 999)
-    return `${CONFIG.influxBaseUrl}/query?pretty=true&db=pvforecast&q=SELECT max("value") FROM "autogen"."pv_forecast_watts" WHERE time >= '${start.toISOString()}' and time <= '${end.toISOString()}'`
-}
-const INFLUX_WATER_TEMPERATURE_LAST = `${CONFIG.influxBaseUrl}/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "autogen"."eta_buffer_temperature_sensor_top_celsius" WHERE time >= now() - 5m and time <= now()`;
-const INFLUX_GRID_USAGE_LAST = `${CONFIG.influxBaseUrl}/query?pretty=true&db=inverter&q=SELECT last("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 5m and time <= now()`;
-const INFLUX_GRID_USAGE_MEAN = `${CONFIG.influxBaseUrl}/query?pretty=true&db=inverter&q=SELECT mean("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 10m and time <= now()`;
-const INFLUX_REQUEST_HEADER = {"Authorization" : "Token " + CONFIG.influxToken};
-
-const ShellySwitch = {
-    turnOn: function () {
-        set(true);
-    },
-    turnOff: function () {
-        set(false);
-    },
-    set: function (on) {
-        axios.get("http://" + this.host + "/rpc/Switch.Set?id=" + this.id + "&on=" + on)
-        .catch(err => {
-            console.log(new Date(), err);
-        });
-    },
-    get: function(callback) {
-        // console.log(new Date(), "Getting switch status: http://" + this.host + "/rpc/Switch.GetStatus?id=" + this.id);
-        axios.get("http://" + this.host + "/rpc/Switch.GetStatus?id=" + this.id)
-        .then(function(result) {callback(result.data === null ? null : result.data.output === true)})
-        .catch(err => {
-            console.log(new Date(), err);
-        });
-    },
-};
-
-function getSwitch(id, host) {
-    let o = Object.create(ShellySwitch);
-    o.id = id;
-    o.host = host
-    return o;
-};
-
-let switch0 = getSwitch(0, CONFIG.switch0Host);
+let switch0 = ShellySwitch.getSwitch(0, CONFIG.switch0Host);
 
 // holds the handle for the recurring timer to clear it when new one is scheduled
 let executionTimer;
@@ -122,59 +35,12 @@ let executionTimer;
  */
 function update() {
     switch0.get(function(switchOn) {
-        axios.all([
-            axios.get(INFLUX_GRID_USAGE_LAST, {headers: INFLUX_REQUEST_HEADER}),
-            axios.get(INFLUX_GRID_USAGE_MEAN, {headers: INFLUX_REQUEST_HEADER}),
-            axios.get(INFLUX_WATER_TEMPERATURE_LAST, {headers: INFLUX_REQUEST_HEADER}),
-            axios.get(INFLUX_FORECAST_PRODUCTION_LAST(), {headers: INFLUX_REQUEST_HEADER}),
-        ]).then(
-            axios.spread((gridLastRes, gridMeanRes, waterTemperatureRes, forecastRes) => {
-            let gridUsageLast = getValue(gridLastRes.data);
-            let gridUsageMean = getValue(gridMeanRes.data);
-            let waterTemperature = getValue(waterTemperatureRes.data);
-            let forecast = {value: getValue(forecastRes.data), time: getTimestamp(forecastRes.data) }
-            let switchStatus = determineNewSwitchStatus(gridUsageMean, gridUsageLast, waterTemperature, switchOn, forecast);
+        dataProvider.getCurrentStatusValues(function(currentStatusValues) {
+            currentStatusValues.switchOn = switchOn;
+            let switchStatus = determineNewSwitchStatus(currentStatusValues);
             setNewSwitchStatus(switchStatus);
-        })).catch(err => {
-            console.log(new Date(), err);
         });
     });
-}
-
-/**
- * 
- * @param {JSON} result The json where to get value from 
- * @returns The value which should be a number or null if an error occurs
- */
-function getValue(result) {
-    if (result === null) {
-        console.log(new Date(), "Could not get value from null result")
-        return null;
-    }
-    try {
-        return result.results[0].series[0].values[0][1];
-    } catch (error) {
-        console.log(new Date(), "Could not get value from JSON", result);
-        return null;
-    }
-}
-
-/**
- * 
- * @param {JSON} result The json where to get timestamp from 
- * @returns The parsed timestamp which should be a Date or null if an error occurs
- */
-function getTimestamp(result) {
-    if (result === null) {
-        console.log(new Date(), "Could not get timestamp from null result")
-        return null;
-    }
-    try {
-        return new Date(result.results[0].series[0].values[0][0]);
-    } catch (error) {
-        console.log(new Date(), "Could not get timestamp from JSON", result);
-        return null;
-    }
 }
 
 /**
@@ -233,41 +99,34 @@ function setNewSwitchStatus(switchStatus) {
 
 /**
  * 
- * @param {Number} wattGridUsageMean If null ON_FALLBACK will be activated durring day hours
- * @param {Number} wattGridUsageLast If null ON_FALLBACK will be activated durring day hours
- * @param {Number} currentWaterTemperature If null temperature dependency operation is deactivated only energy production would be taken in consideration
- * @param {boolean} switchOn 
- * @param {Object} the object which contains forecasted watts and the timestamp when this should occurr
+ * @param {Object} CurrentStatusValues
  * @returns The SWITCH_STATUS which was determined due to the passed values
  */
-function determineNewSwitchStatus(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, switchOn, forecast) {
-    console.log(new Date(), `Determine switch status with grid usage (mean / last) ${wattGridUsageMean} W / ${wattGridUsageLast} W, water temperature ${currentWaterTemperature} °C, ` + (switchOn ? " switch on " : " switch off ") + "and forecast " + (forecast ? `${forecast.value} W at ${forecast.time}` : "null"));
+function determineNewSwitchStatus(currentStatusValues) {
+    console.log("Determine switch status with: ", currentStatusValues)
+    
+    if(currentStatusValues.boilerStatus && currentStatusValues.boilerStatus !== 0) {
+        return SWITCH_STATUS.OFF_PRIMARY_SOURCE_ACTIVE;
+    }
+    
     if (!isWithinNormalOperatingHours()) {
         return SWITCH_STATUS.OFF_NIGHT;
     }
 
-    let currentStatusValues = {
-        wattGridUsageMean: wattGridUsageMean,
-        wattGridUsageLast: wattGridUsageLast,
-        currentWaterTemperature: currentWaterTemperature,
-        switchOn: switchOn,
-        forecast: forecast,
-    }
-
     // check water temperature
-    if (currentWaterTemperature !== null) {
+    if (currentStatusValues.currentWaterTemperature !== null) {
         if (isWaterTemperatureToHigh(currentStatusValues, CONFIG.maxWaterTemperature, CONFIG.maxWaterTemperatureDelta)) {
             return SWITCH_STATUS.OFF_HIGH_TEMPERATURE;
         }
 
         // turn on if water is too cold
-        if (currentWaterTemperature <= CONFIG.minWaterTemperature) {
+        if (currentStatusValues.currentWaterTemperature <= CONFIG.minWaterTemperature) {
             return SWITCH_STATUS.ON_LOW_TEMPERATURE;
         }
     }
 
     // turn on if no information about energy production is available only within fallback operation hours
-    if ((wattGridUsageMean === null || wattGridUsageLast === null)) {
+    if ((currentStatusValues.wattGridUsageMean === null || currentStatusValues.wattGridUsageLast === null)) {
         if (isWithinFallbackOperatingHours() && !isWaterTemperatureToHigh(currentStatusValues, CONFIG.maxWaterTemperatureFallback , CONFIG.maxWaterTemperatureDelta)) {
             return SWITCH_STATUS.ON_FALLBACK;
         } else {
@@ -310,7 +169,8 @@ function determinSwitchStatusByGridUsage(currentStatusValues, onStatusFunction, 
  */
 function determineNewSwitchStatusByForecast(currentStatusValues) {
     // check the forecast also take in cosideration current usage off net and a lower max watertemperature
-    if (currentStatusValues.forecast && currentStatusValues.forecast.value <= CONFIG.wattThresholdToSwitchOn && 
+    if (currentStatusValues.forecast && currentStatusValues.forecast.value && currentStatusValues.forecast.time &&
+        currentStatusValues.forecast.value <= CONFIG.wattThresholdToSwitchOn && 
         !isWaterTemperatureToHigh(currentStatusValues, CONFIG.maxWaterTemperatureFallback , CONFIG.maxWaterTemperatureDelta) &&
         isWithinOperatingHours(Math.min(currentStatusValues.forecast.time.getHours(), CONFIG.startHourFallback), CONFIG.endHourFallback)) {
         // shift the zero point to match the energy consumption of appliance
@@ -382,5 +242,4 @@ if (RUN_WITH_TIMER) {
     console.log(new Date(), "Dry run. not starting initial loop");
 }
 
-
-module.exports = {update, determineNewSwitchStatus, setNewSwitchStatus, CONFIG, SWITCH_STATUS, switch0}
+module.exports = {update, determineNewSwitchStatus, setNewSwitchStatus, switch0}
