@@ -103,7 +103,7 @@ function setNewSwitchStatus(switchStatus) {
  * @returns The SWITCH_STATUS which was determined due to the passed values
  */
 function determineNewSwitchStatus(currentStatusValues) {
-    console.log("Determine switch status with: ", currentStatusValues)
+    console.log(new Date(), "Determine switch status with: ", currentStatusValues)
     
     if(currentStatusValues.boilerStatus && currentStatusValues.boilerStatus !== 0) {
         return SWITCH_STATUS.OFF_PRIMARY_SOURCE_ACTIVE;

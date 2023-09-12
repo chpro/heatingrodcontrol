@@ -70,8 +70,8 @@ function getCurrentStatusValues(callback) {
         axios.get(INFLUX_FORECAST_PRODUCTION_LAST(), {headers: INFLUX_REQUEST_HEADER}),
         axios.get(INFLUX_BOILER_STATUS, {headers: INFLUX_REQUEST_HEADER}),
     ]).then(axios.spread((gridLastRes, gridMeanRes, waterTemperatureRes, forecastRes, boilerStatusRes) => {
-        o.wattGridUsageMean = getValue(gridLastRes.data);
-        o.wattGridUsageLast = getValue(gridMeanRes.data);
+        o.wattGridUsageLast = getValue(gridLastRes.data);
+        o.wattGridUsageMean = getValue(gridMeanRes.data);
         o.currentWaterTemperature = getValue(waterTemperatureRes.data);
         o.boilerStatus = getValue(boilerStatusRes.data);
         o.forecast = {value: getValue(forecastRes.data), time: getTimestamp(forecastRes.data)},
