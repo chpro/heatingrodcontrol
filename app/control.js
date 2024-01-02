@@ -148,11 +148,11 @@ function determineNewSwitchStatus(currentStatusValues) {
 function determinSwitchStatusByGridUsage(currentStatusValues, onStatusFunction, offStatusFunction) {
     // check if enough solar power is available
     //console.log(new Date(), "Current status values", currentStatusValues)
-    if (currentStatusValues.wattGridUsageLast < 0 && currentStatusValues.switchOn && 
+    if (currentStatusValues.wattGridUsageLast < CONFIG.wattThresholdToSwitchOff && currentStatusValues.switchOn && 
             Math.abs(currentStatusValues.wattGridUsageLast) >= CONFIG.wattThresholdToSwitchOff) {
         // as long some energy is feed in keep it on
         return onStatusFunction(currentStatusValues);
-    } else if (currentStatusValues.wattGridUsageLast < 0 && !currentStatusValues.switchOn &&
+    } else if (currentStatusValues.wattGridUsageLast < CONFIG.wattThresholdToSwitchOff && !currentStatusValues.switchOn &&
                 Math.abs(currentStatusValues.wattGridUsageLast) >= CONFIG.wattThresholdToSwitchOn &&
                 Math.abs(currentStatusValues.wattGridUsageMean) >= CONFIG.wattThresholdToSwitchOn) {
         // feed in power exceeds watt threshold
