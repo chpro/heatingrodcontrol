@@ -119,6 +119,17 @@ assertMeanLast(excessEnergyUnderThreshold + CONFIG.wattThresholdToSwitchOn, exce
 assertMeanLast(excessEnergyUnderThreshold + CONFIG.wattThresholdToSwitchOn*2, excessEnergyUnderThreshold + CONFIG.wattThresholdToSwitchOn*2, CONFIG.maxWaterTemperatureFallback - 1, SWITCH_STATUS.OFF_FORECAST, true, CONFIG.wattThresholdToSwitchOn - 10, new Date("2023-08-29T11:00:00Z"))
 assertMeanLast(excessEnergyUnderThreshold + CONFIG.wattThresholdToSwitchOn*2, excessEnergyUnderThreshold + CONFIG.wattThresholdToSwitchOn*2, CONFIG.maxWaterTemperatureFallback - CONFIG.maxWaterTemperatureDelta- 1, SWITCH_STATUS.OFF_FORECAST, true, CONFIG.wattThresholdToSwitchOn - 10, new Date("2023-08-29T11:00:00Z"))
 
+// check modified CONFIG.wattThresholdToSwitchOff value
+CONFIG.wattThresholdToSwitchOff=100
+assertMeanLast(excessEnergyOverThreshold, -101, minWaterTemperature +1, SWITCH_STATUS.ON_ENERGY, true)
+assertMeanLast(excessEnergyOverThreshold, 99, minWaterTemperature +1, SWITCH_STATUS.ON_ENERGY, true)
+assertMeanLast(excessEnergyOverThreshold, 100, minWaterTemperature +1, SWITCH_STATUS.OFF_LOW_ENERGY, true)
+
+assertMeanLast(excessEnergyOverThreshold, 100, minWaterTemperature +1, SWITCH_STATUS.OFF_LOW_ENERGY, false)
+assertMeanLast(excessEnergyOverThreshold, 99, minWaterTemperature +1, SWITCH_STATUS.OFF_LOW_ENERGY, false)
+assertMeanLast(excessEnergyOverThreshold, excessEnergyOverThreshold, minWaterTemperature +1, SWITCH_STATUS.ON_ENERGY, false)
+
+CONFIG.wattThresholdToSwitchOff=0
 
 // fallback to always off
 CONFIG.startHourFallback = 24

@@ -149,8 +149,9 @@ function determinSwitchStatusByGridUsage(currentStatusValues, onStatusFunction, 
     // check if enough solar power is available
     //console.log(new Date(), "Current status values", currentStatusValues)
     if (currentStatusValues.wattGridUsageLast < CONFIG.wattThresholdToSwitchOff && currentStatusValues.switchOn && 
-            Math.abs(currentStatusValues.wattGridUsageLast) >= CONFIG.wattThresholdToSwitchOff) {
-        // as long some energy is feed in keep it on
+            // shift the feed in energy by the watt threshold for switching off
+            Math.abs(currentStatusValues.wattGridUsageLast - CONFIG.wattThresholdToSwitchOff) >= 0) {
+        // as long as engergy usage is within defined limits (feed in or maybe low consumption) keep on
         return onStatusFunction(currentStatusValues);
     } else if (currentStatusValues.wattGridUsageLast < CONFIG.wattThresholdToSwitchOff && !currentStatusValues.switchOn &&
                 Math.abs(currentStatusValues.wattGridUsageLast) >= CONFIG.wattThresholdToSwitchOn &&
