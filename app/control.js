@@ -35,8 +35,7 @@ let executionTimer;
  */
 function update() {
     switch0.get(function(switchOn) {
-        dataProvider.getCurrentStatusValues(function(currentStatusValues) {
-            currentStatusValues.switchOn = switchOn;
+        dataProvider.getCurrentStatusValues(switchOn, function(currentStatusValues) {
             let switchStatus = determineNewSwitchStatus(currentStatusValues);
             setNewSwitchStatus(switchStatus);
         });
@@ -102,11 +101,15 @@ function setNewSwitchStatus(switchStatus) {
  * @param {Object} CurrentStatusValues
  * @returns The SWITCH_STATUS which was determined due to the passed values
  */
-function determineNewSwitchStatus(currentStatusValues) {
-    console.log(new Date(), "Determine switch status with: ", currentStatusValues)
-    
-    if(currentStatusValues.boilerStatus && currentStatusValues.boilerStatus !== 0) {
+function determineNewSwitchStatus(processedStatusValues) {
+    console.log(new Date(), "Determine switch status with processed status values: ", processedStatusValues)
+
+    if(processedStatusValues.primarySourceActive) {
         return SWITCH_STATUS.OFF_PRIMARY_SOURCE_ACTIVE;
+    }
+
+    if (processedStatusValues.batteryCharge < CONFIG.minBatteryCharge) {
+        return SWITCH_STATUS.OFF_LOW_BATTERY_CHARGE;
     }
     
     if (!isWithinNormalOperatingHours()) {
@@ -114,20 +117,20 @@ function determineNewSwitchStatus(currentStatusValues) {
     }
 
     // check water temperature
-    if (currentStatusValues.currentWaterTemperature !== null) {
-        if (isWaterTemperatureToHigh(currentStatusValues, CONFIG.maxWaterTemperature, CONFIG.maxWaterTemperatureDelta)) {
+    if (processedStatusValues.currentWaterTemperature !== null) {
+        if (isWaterTemperatureToHigh(processedStatusValues, CONFIG.maxWaterTemperature, CONFIG.maxWaterTemperatureDelta)) {
             return SWITCH_STATUS.OFF_HIGH_TEMPERATURE;
         }
 
         // turn on if water is too cold
-        if (currentStatusValues.currentWaterTemperature <= CONFIG.minWaterTemperature) {
+        if (processedStatusValues.currentWaterTemperature <= CONFIG.minWaterTemperature) {
             return SWITCH_STATUS.ON_LOW_TEMPERATURE;
         }
     }
 
     // turn on if no information about energy production is available only within fallback operation hours
-    if ((currentStatusValues.wattGridUsageMean === null || currentStatusValues.wattGridUsageLast === null)) {
-        if (isWithinFallbackOperatingHours() && !isWaterTemperatureToHigh(currentStatusValues, CONFIG.maxWaterTemperatureFallback , CONFIG.maxWaterTemperatureDelta)) {
+    if (processedStatusValues.availableEnergy === null) {
+        if (isWithinFallbackOperatingHours() && !isWaterTemperatureToHigh(processedStatusValues, CONFIG.maxWaterTemperatureFallback , CONFIG.maxWaterTemperatureDelta)) {
             return SWITCH_STATUS.ON_FALLBACK;
         } else {
             return SWITCH_STATUS.OFF_FALLBACK;
@@ -135,73 +138,76 @@ function determineNewSwitchStatus(currentStatusValues) {
     }
 
     // determinSwitchStatusByGridUsage calls the determineNewSwitchStatusByForecast for off status
-    return determinSwitchStatusByGridUsage(currentStatusValues, function(){return SWITCH_STATUS.ON_ENERGY}, determineNewSwitchStatusByForecast);
+    return determinSwitchStatusByGridUsage(processedStatusValues, function(){return SWITCH_STATUS.ON_ENERGY}, determineNewSwitchStatusByForecast);
 }
 
 /**
  * 
- * @param {Object} currentStatusValues
+ * @param {Object} statusValues
  * @param {Function} onStatusFunction a function which returns the switch status for on
  * @param {Function} offStatusFunction a function which returns the switch status for off
  * @returns The SWITCH_STATUS which was determined due to the passed values
  */
-function determinSwitchStatusByGridUsage(currentStatusValues, onStatusFunction, offStatusFunction) {
+function determinSwitchStatusByGridUsage(statusValues, onStatusFunction, offStatusFunction) {
     // check if enough solar power is available
-    //console.log(new Date(), "Current status values", currentStatusValues)
-    if (currentStatusValues.wattGridUsageLast < CONFIG.wattThresholdToSwitchOff && currentStatusValues.switchOn && 
-            // shift the feed in energy by the watt threshold for switching off
-            Math.abs(currentStatusValues.wattGridUsageLast - CONFIG.wattThresholdToSwitchOff) >= 0) {
-        // as long as engergy usage is within defined limits (feed in or maybe low consumption) keep on
-        return onStatusFunction(currentStatusValues);
-    } else if (currentStatusValues.wattGridUsageLast < CONFIG.wattThresholdToSwitchOff && !currentStatusValues.switchOn &&
-                Math.abs(currentStatusValues.wattGridUsageLast) >= CONFIG.wattThresholdToSwitchOn &&
-                Math.abs(currentStatusValues.wattGridUsageMean) >= CONFIG.wattThresholdToSwitchOn) {
+    console.log(new Date(), "Determine switch status by grid usage with status values", statusValues)
+    if (statusValues.switchOn && statusValues.availableEnergy > CONFIG.wattThresholdToSwitchOff) {
+        return onStatusFunction(statusValues);
+    } else if (!statusValues.switchOn && statusValues.availableEnergy >= CONFIG.wattThresholdToSwitchOn) {
         // feed in power exceeds watt threshold
-        return onStatusFunction(currentStatusValues);
+        return onStatusFunction(statusValues);
     } else {
-        return offStatusFunction(currentStatusValues);
+        return offStatusFunction(statusValues);
     }
 }
 
 /**
  * The off status function to determine status by forecast in a second step
- * @param {Object} currentStatusValues
+ * @param {Object} statusValues
  * @returns The SWITCH_STATUS which was determined due to the passed values
  */
-function determineNewSwitchStatusByForecast(currentStatusValues) {
+function determineNewSwitchStatusByForecast(statusValues) {
     // check the forecast also take in cosideration current usage off net and a lower max watertemperature
-    if (currentStatusValues.forecast && currentStatusValues.forecast.value && currentStatusValues.forecast.time &&
-        currentStatusValues.forecast.value <= CONFIG.wattThresholdToSwitchOn && 
-        !isWaterTemperatureToHigh(currentStatusValues, CONFIG.maxWaterTemperatureFallback , CONFIG.maxWaterTemperatureDelta) &&
-        isWithinOperatingHours(Math.min(currentStatusValues.forecast.time.getHours(), CONFIG.startHourFallback), CONFIG.endHourFallback)) {
-        // shift the zero point to match the energy consumption of appliance
-        currentStatusValues.wattGridUsageMean -= CONFIG.wattThresholdToSwitchOn
-        currentStatusValues.wattGridUsageLast -= CONFIG.wattThresholdToSwitchOn
-        return determinSwitchStatusByGridUsage(currentStatusValues, function(){return SWITCH_STATUS.ON_FORECAST}, function(){return SWITCH_STATUS.OFF_FORECAST});
+    if (isForcastFallbakcEnabled(statusValues) && 
+        !isWaterTemperatureToHigh(statusValues, CONFIG.maxWaterTemperatureFallback , CONFIG.maxWaterTemperatureDelta) &&
+        isWithinOperatingHours(Math.min(statusValues.forecast.time.getHours(), CONFIG.startHourFallback), CONFIG.endHourFallback)) {
+        // shift available energy by part of the appliances watt usage except we alreasy use energy from grid
+        if (statusValues.availableEnergy === 0) { // draw energy from grid, should not be more than availableEnergyOffsetFallback
+            statusValues.availableEnergy = statusValues.gridEnergy >= CONFIG.availableEnergyOffsetFallback ? 0 : CONFIG.availableEnergyOffsetFallback - statusValues.gridEnergy;
+        } else {
+            statusValues.availableEnergy = statusValues.availableEnergy + CONFIG.availableEnergyOffsetFallback;
+        }
+        console.log(new Date(), "Calling determine switch status by grid usage status values for forecast");
+        return determinSwitchStatusByGridUsage(statusValues, function(){return SWITCH_STATUS.ON_FORECAST}, function(){return SWITCH_STATUS.OFF_FORECAST});
     } else {
         return SWITCH_STATUS.OFF_LOW_ENERGY;
     }
 }
 
+function isForcastFallbakcEnabled(statusValues) {
+    return statusValues.forecast && statusValues.forecast.value && statusValues.forecast.time &&
+        statusValues.forecast.value <= CONFIG.wattThresholdToSwitchOn
+}
+
 /**
  * Checks if current water temperature is to high also implements temperature delta logic
- * @param {Object} currentStatusValues 
+ * @param {Object} statusValues 
  * @param {Number} maxWaterTemperature 
  * @param {Number} maxWaterTemperatureDelta 
  * @returns 
  */
-function isWaterTemperatureToHigh(currentStatusValues, maxWaterTemperature, maxWaterTemperatureDelta) {
-    if (currentStatusValues.currentWaterTemperature === null) {
+function isWaterTemperatureToHigh(statusValues, maxWaterTemperature, maxWaterTemperatureDelta) {
+    if (statusValues.currentWaterTemperature === null) {
         return false;
     }
 
     // turn off if maxWaterTemperature is reached
-    if (currentStatusValues.switchOn && currentStatusValues.currentWaterTemperature >= maxWaterTemperature) {
+    if (statusValues.switchOn && statusValues.currentWaterTemperature >= maxWaterTemperature) {
         return true
     } 
 
     // keep turned off till the water cooled down by by maxWaterTemperatureDelta
-    if (!currentStatusValues.switchOn && currentStatusValues.currentWaterTemperature >= maxWaterTemperature - maxWaterTemperatureDelta) {
+    if (!statusValues.switchOn && statusValues.currentWaterTemperature >= maxWaterTemperature - maxWaterTemperatureDelta) {
         return true
     }
 

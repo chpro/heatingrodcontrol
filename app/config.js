@@ -1,7 +1,11 @@
 const MINUTE = 1000*60;
 const CONFIG = {
+    offWhenPrimarySourceActive: process.env.OFF_WHEN_PRIMARY_SOURCE_ACTIVE !== undefined && process.env.OFF_WHEN_PRIMARY_SOURCE_ACTIVE.toLowerCase() === "true",
     wattThresholdToSwitchOn: Number(process.env.WATT_THRESHOLD_TO_SWITCH_ON) || 3000,
     wattThresholdToSwitchOff: Number(process.env.WATT_THRESHOLD_TO_SWITCH_OFF) || 0,
+    wattZeroGridUsageOffset: Number(process.env.WATT_GRID_USAGE_IN_OFFSET) || 0,
+    minBatteryCharge: Number(process.env.MIN_BATTERY_CHARGE) || 0, // set to 0 do deactivate check
+    availableEnergyOffsetFallback: Number(process.env.AVAILABLE_ENERGY_OFFSET_FALLBACK) || 1000, // should be wattThresholdToSwitchOn * energy sell / energy buy
     minWaterTemperature: Number(process.env.MIN_WATER_TEMPERATURE) || 40,
     maxWaterTemperature: Number(process.env.MAX_WATER_TEMPERATURE) || 70,
     maxWaterTemperatureFallback: Number(process.env.MAX_WATER_TEMPERATURE_FALLBACK) || 60,

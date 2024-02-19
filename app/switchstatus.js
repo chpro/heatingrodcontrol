@@ -13,6 +13,7 @@ const SWITCH_STATUS = {
     OFF_FALLBACK: {on: false, status: -4, message: "Off due to no value for energy production was available and time outside fallback operating hours", timerPeriod: CONFIG.timerPeriodOffFallback},
     OFF_FORECAST: {on: false, status: -5, message: "Off due to too low energy production within the forecast fallback operating mode", timerPeriod: CONFIG.timerPeriodOffFallback},
     OFF_PRIMARY_SOURCE_ACTIVE: {on: false, status: -6, message: "Off due to too another appliance is enabled and producing hot water", timerPeriod: CONFIG.timerPeriodOffPrimarySourceActive},
+    OFF_LOW_BATTERY_CHARGE: {on: false, status: -7, message: "Off due to too low battery charge", timerPeriod: CONFIG.timerPeriodOffPrimarySourceActive},
 };
 
 module.exports = {SWITCH_STATUS}
