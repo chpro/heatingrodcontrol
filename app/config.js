@@ -36,6 +36,7 @@ const CONFIG = {
     timerPeriodManually: Number(process.env.TIMER_PERIOD_MANUALLY) || 60 * MINUTE,
     timerPeriodOffFallback: Number(process.env.TIMER_PERIOD_OFF_FALLBACK) || 10 * MINUTE,
     timerPeriodOffPrimarySourceActive: Number(process.env.TIMER_PERIOD_OFF_PRIMARY_SOURCE_ACTIVE) || 12 * 60 * MINUTE,
+    timerPeriodOffLowBatteryCharge: Number(process.env.TIMER_PERIOD_OFF_LOW_BATTERY_CHARGE) || 10 * MINUTE,
 };
 
 module.exports = {CONFIG}

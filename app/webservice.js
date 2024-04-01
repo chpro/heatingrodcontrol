@@ -1,4 +1,5 @@
 const hrc = require('./control')
+const dataProvider = require('./influxdataprovider')
 const CONFIG = require('./config').CONFIG
 const SWITCH_STATUS = require('./switchstatus').SWITCH_STATUS
 const express = require('express')
@@ -14,7 +15,11 @@ var corsOptions = {
 ws.use(cors(corsOptions))
 
 ws.get('/config', (req, res) => {
-    res.json({"config": CONFIG, "status": SWITCH_STATUS})
+    hrc.switch0.get(function(switchOn) {
+        dataProvider.getCurrentStatusValues(switchOn, function(currentStatusValues) {
+            res.json({"values": currentStatusValues, "config": CONFIG, "status": SWITCH_STATUS})
+        });
+    });
 })
 
 ws.get('/switchStatus', (req, res) => {
