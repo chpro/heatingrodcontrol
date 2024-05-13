@@ -9,7 +9,7 @@ const port = 3000
 
 
 var corsOptions = {
-    origin: 'http://tig:3000',
+    origin: /https?:\/\/tig.*$/i,
     credentials: true,
 }
 ws.use(cors(corsOptions))
