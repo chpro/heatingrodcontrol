@@ -1,6 +1,7 @@
 const CONFIG = require('./config').CONFIG
 
 const SWITCH_STATUS = {
+    ON_HIGH_BATTERY_CHARGE: {on: true, status: 6, message: "On high battery charge is used to cover low production", timerPeriod: CONFIG.timerPeriodOnEnergy},
     ON_FORECAST: {on: true, status: 5, message: "On due to forecast fallback operating mode", timerPeriod: CONFIG.timerPeriodOnFallback},
     ON_FALLBACK: {on: true, status: 4, message: "On due to no value for energy production was available and time within fallback operating hours", timerPeriod: CONFIG.timerPeriodOnFallback},
     ON_MANUALLY: {on: true, status: 3, message: "On due to manual intervention", timerPeriod: CONFIG.timerPeriodManually},

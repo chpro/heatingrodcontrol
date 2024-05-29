@@ -171,6 +171,19 @@ testCount = 0
 CONFIG.minBatteryCharge = 25;
 assertMeanLast(excessEnergyOverThreshold, -1, CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta - 1, SWITCH_STATUS.OFF_LOW_BATTERY_CHARGE, true, null, null, null, 12.6)
 assertMeanLast(excessEnergyOverThreshold, -1, CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta - 1, SWITCH_STATUS.ON_ENERGY, true, null, null, null, 25)
+assertMeanLast(excessEnergyOverThreshold, excessEnergyOverThreshold, CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta - 1, SWITCH_STATUS.OFF_LOW_BATTERY_CHARGE, false, null, null, null, 12.6)
+assertMeanLast(excessEnergyOverThreshold, excessEnergyOverThreshold, CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta - 1, SWITCH_STATUS.ON_ENERGY, false, null, null, null, 25)
+CONFIG.minBatteryCharge = 0;
+
+console.log("test battery charge high enough to use some of it for heating water")
+testCount = 0
+CONFIG.minBatteryCharge = 80;
+assertMeanLast(999, 999, CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta - 1, SWITCH_STATUS.ON_HIGH_BATTERY_CHARGE, true, null, null, null, 91)
+assertMeanLast(excessEnergyUnderThreshold, excessEnergyUnderThreshold, CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta - 1, SWITCH_STATUS.OFF_LOW_BATTERY_CHARGE, true, null, null, null, 79)
+assertMeanLast(99, 99, CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta - 1, SWITCH_STATUS.ON_HIGH_BATTERY_CHARGE, true, null, null, null, 80)
+assertMeanLast(excessEnergyUnderThreshold, excessEnergyUnderThreshold, CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta - 1, SWITCH_STATUS.ON_HIGH_BATTERY_CHARGE, false, null, null, null, 91)
+assertMeanLast(excessEnergyUnderThreshold, excessEnergyUnderThreshold, CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta - 1, SWITCH_STATUS.OFF_LOW_BATTERY_CHARGE, false, null, null, null, 79)
+assertMeanLast(excessEnergyUnderThreshold, excessEnergyUnderThreshold, CONFIG.maxWaterTemperature - CONFIG.maxWaterTemperatureDelta - 1, SWITCH_STATUS.OFF_LOW_ENERGY, false, null, null, null, 85)
 CONFIG.minBatteryCharge = 0;
 
 // check HTTP client
@@ -188,8 +201,11 @@ function assert(wattGridUsage, currentWaterTemperature, expectedResult, switchOn
 
 function assertMeanLast(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, expectedResult, switchOn, forecastValue = null, forecastTime = null, boilerStatus = null, batteryCharge = null) {
     testCount++;
-    result = control.determineNewSwitchStatus(DataProvider.getStatusValues(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, switchOn, forecastValue, forecastTime, boilerStatus, batteryCharge))
-    console.log("    => Result: " + result.message)
     console.log("=".repeat(80))
-    assertlib.equal(result, expectedResult, "Expected: " + JSON.stringify(expectedResult) + " but got " + JSON.stringify(result) + " in test nr.: " + testCount)
+    console.log("    => expected Result: " + expectedResult.message)
+    result = control.determineNewSwitchStatus(DataProvider.getStatusValues(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, switchOn, forecastValue, forecastTime, boilerStatus, batteryCharge))
+    assertlib.equal(result, expectedResult, "For mean/last -> Expected: " + JSON.stringify(expectedResult) + " but got " + JSON.stringify(result) + " in test nr.: " + testCount)
+    console.log("-".repeat(80))
+    result2 = control.determineNewSwitchStatus(DataProvider.getStatusValues(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, switchOn, forecastValue, forecastTime, boilerStatus, batteryCharge, {P_PV: Math.max(wattGridUsageLast, wattGridUsageMean) * -1, P_Load: 0}))
+    assertlib.equal(result2, expectedResult, "For inverterPowerFlow -> Expected: " + JSON.stringify(expectedResult) + " but got " + JSON.stringify(result2) + " in test nr.: " + testCount)
 }

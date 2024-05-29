@@ -108,12 +108,12 @@ function determineNewSwitchStatus(processedStatusValues) {
         return SWITCH_STATUS.OFF_PRIMARY_SOURCE_ACTIVE;
     }
 
-    if (processedStatusValues.batteryCharge < CONFIG.minBatteryCharge) {
-        return SWITCH_STATUS.OFF_LOW_BATTERY_CHARGE;
-    }
-    
     if (!isWithinNormalOperatingHours()) {
         return SWITCH_STATUS.OFF_NIGHT;
+    }
+
+    if (processedStatusValues.batteryCharge < CONFIG.minBatteryCharge) {
+        return SWITCH_STATUS.OFF_LOW_BATTERY_CHARGE;
     }
 
     // check water temperature
@@ -137,8 +137,8 @@ function determineNewSwitchStatus(processedStatusValues) {
         }
     }
 
-    // determinSwitchStatusByGridUsage calls the determineNewSwitchStatusByForecast for off status
-    return determinSwitchStatusByGridUsage(processedStatusValues, function(){return SWITCH_STATUS.ON_ENERGY}, determineNewSwitchStatusByForecast);
+    // determinSwitchStatusByGriByGridUsage then determineNewSwitchStatusByCharge and last determineNewSwitchStatusByForecast
+    return determinSwitchStatusByGridUsage(processedStatusValues, function(){return SWITCH_STATUS.ON_ENERGY}, determineNewSwitchStatusByCharge);
 }
 
 /**
@@ -162,29 +162,55 @@ function determinSwitchStatusByGridUsage(statusValues, onStatusFunction, offStat
 }
 
 /**
- * The off status function to determine status by forecast in a second step
+ * The off status function to determine status by battery charge in another step
+ * @param {Object} statusValues
+ * @returns The SWITCH_STATUS which was determined due to the passed values
+ */
+function determineNewSwitchStatusByCharge(statusValues) {
+    // check the forecast also take in cosideration current usage off net and a lower max watertemperature
+    if (CONFIG.minBatteryCharge !== 0 && canConsumeBatteryCharge(statusValues)) {
+        console.log(new Date(), "Calling determine switch status by grid usage status values for battery charge");
+        return determinSwitchStatusByGridUsage(shiftAvailableEnergy(statusValues), function(){return SWITCH_STATUS.ON_HIGH_BATTERY_CHARGE}, determineNewSwitchStatusByForecast);
+    } else {
+        return determineNewSwitchStatusByForecast(statusValues);
+    }
+}
+
+/**
+ * shift available energy by part of the appliances watt usage except we already use energy from grid
+ * @param {Object} statusValues 
+ * @returns 
+ */
+function shiftAvailableEnergy(statusValues) {
+    if (statusValues.shifted) return statusValues;
+    if (statusValues.availableEnergy === 0) { // draw energy from grid, should not be more than availableEnergyOffsetFallback
+        statusValues.availableEnergy = statusValues.gridEnergy >= CONFIG.availableEnergyOffsetFallback ? 0 : CONFIG.availableEnergyOffsetFallback - statusValues.gridEnergy;
+    } else {
+        statusValues.availableEnergy = statusValues.availableEnergy + CONFIG.availableEnergyOffsetFallback;
+    }
+    statusValues.shifted = true;
+    return statusValues
+}
+
+/**
+ * The off status function to determine status by forecast in another step
  * @param {Object} statusValues
  * @returns The SWITCH_STATUS which was determined due to the passed values
  */
 function determineNewSwitchStatusByForecast(statusValues) {
     // check the forecast also take in cosideration current usage off net and a lower max watertemperature
-    if (isForcastFallbakcEnabled(statusValues) && 
+    if (isForcastFallbackEnabled(statusValues) && 
         !isWaterTemperatureToHigh(statusValues, CONFIG.maxWaterTemperatureFallback , CONFIG.maxWaterTemperatureDelta) &&
         isWithinOperatingHours(Math.min(statusValues.forecast.time.getHours(), CONFIG.startHourFallback), CONFIG.endHourFallback)) {
         // shift available energy by part of the appliances watt usage except we alreasy use energy from grid
-        if (statusValues.availableEnergy === 0) { // draw energy from grid, should not be more than availableEnergyOffsetFallback
-            statusValues.availableEnergy = statusValues.gridEnergy >= CONFIG.availableEnergyOffsetFallback ? 0 : CONFIG.availableEnergyOffsetFallback - statusValues.gridEnergy;
-        } else {
-            statusValues.availableEnergy = statusValues.availableEnergy + CONFIG.availableEnergyOffsetFallback;
-        }
         console.log(new Date(), "Calling determine switch status by grid usage status values for forecast");
-        return determinSwitchStatusByGridUsage(statusValues, function(){return SWITCH_STATUS.ON_FORECAST}, function(){return SWITCH_STATUS.OFF_FORECAST});
+        return determinSwitchStatusByGridUsage(shiftAvailableEnergy(statusValues), function(){return SWITCH_STATUS.ON_FORECAST}, function(){return SWITCH_STATUS.OFF_FORECAST});
     } else {
         return SWITCH_STATUS.OFF_LOW_ENERGY;
     }
 }
 
-function isForcastFallbakcEnabled(statusValues) {
+function isForcastFallbackEnabled(statusValues) {
     return statusValues.forecast && statusValues.forecast.value && statusValues.forecast.time &&
         statusValues.forecast.value <= CONFIG.wattThresholdToSwitchOn
 }
@@ -210,6 +236,27 @@ function isWaterTemperatureToHigh(statusValues, maxWaterTemperature, maxWaterTem
     if (!statusValues.switchOn && statusValues.currentWaterTemperature >= maxWaterTemperature - maxWaterTemperatureDelta) {
         return true
     }
+
+    return false;
+}
+
+/**
+ * Checks if battery charge can be consumed
+ * @param {Object} statusValues 
+ * @returns 
+ */
+function canConsumeBatteryCharge(statusValues) {
+    if (statusValues.batteryCharge === null) {
+        return false;
+    }
+
+    if (statusValues.switchOn && statusValues.batteryCharge >= CONFIG.minBatteryCharge) {
+        return true
+    }
+
+    if (!statusValues.switchOn && statusValues.batteryCharge >= CONFIG.minBatteryCharge + CONFIG.minBatteryChargeDelta) {
+        return true
+    } 
 
     return false;
 }

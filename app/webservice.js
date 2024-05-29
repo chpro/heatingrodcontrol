@@ -12,6 +12,7 @@ var corsOptions = {
     origin: /https?:\/\/tig.*$/i,
     credentials: true,
 }
+
 ws.use(cors(corsOptions))
 
 ws.get('/config', (req, res) => {

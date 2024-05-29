@@ -5,6 +5,7 @@ const CONFIG = {
     wattThresholdToSwitchOff: Number(process.env.WATT_THRESHOLD_TO_SWITCH_OFF) || 0,
     wattZeroGridUsageOffset: Number(process.env.WATT_GRID_USAGE_IN_OFFSET) || 0,
     minBatteryCharge: Number(process.env.MIN_BATTERY_CHARGE) || 0, // set to 0 do deactivate check
+    minBatteryChargeDelta: Number(process.env.MIN_BATTERY_CHARGE_DELTA) || 10,
     availableEnergyOffsetFallback: Number(process.env.AVAILABLE_ENERGY_OFFSET_FALLBACK) || 1000, // should be wattThresholdToSwitchOn * energy sell / energy buy
     minWaterTemperature: Number(process.env.MIN_WATER_TEMPERATURE) || 40,
     maxWaterTemperature: Number(process.env.MAX_WATER_TEMPERATURE) || 70,
@@ -22,6 +23,7 @@ const CONFIG = {
     influxHost: process.env.INFLUX_HOST || "tig",
     influxBaseUrl: process.env.INFLUX_BASE_URL || "http://tig:8086",
     influxToken: process.env.INFLUX_TOKEN,
+    inverterPowerFlowUrl: process.env.INVERTER_POWER_FLOW_URL || "http://inverter.localdomain/status/powerflow",
 
     // shelly switch
     switch0Host: process.env.SWITCH0_HOST || "heatingrod.localdomain",

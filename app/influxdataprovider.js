@@ -14,7 +14,7 @@ const INFLUX_GRID_USAGE_LAST = `${CONFIG.influxBaseUrl}/query?pretty=true&db=inv
 const INFLUX_GRID_USAGE_MEAN = `${CONFIG.influxBaseUrl}/query?pretty=true&db=inverter&q=SELECT mean("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 10m and time <= now()`;
 const INFLUX_BOILER_STATUS = `${CONFIG.influxBaseUrl}/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "eta_boiler_status"`;
 const INFLUX_BATTERY_CHARGE_LAST = `${CONFIG.influxBaseUrl}/query?pretty=true&db=inverter&q=SELECT last("StateOfCharge_Relative") FROM "autogen"."storage"`;
-
+const INVERTER_POWER_FLOW = CONFIG.inverterPowerFlowUrl
 
 
 const INFLUX_REQUEST_HEADER = {"Authorization" : "Token " + CONFIG.influxToken};
@@ -63,7 +63,8 @@ function getCurrentStatusValues(switchOn, callback) {
         axios.get(INFLUX_FORECAST_PRODUCTION_LAST(), {headers: INFLUX_REQUEST_HEADER}),
         axios.get(INFLUX_BOILER_STATUS, {headers: INFLUX_REQUEST_HEADER}),
         axios.get(INFLUX_BATTERY_CHARGE_LAST, {headers: INFLUX_REQUEST_HEADER}),
-    ]).then(axios.spread((gridLastRes, gridMeanRes, waterTemperatureRes, forecastRes, boilerStatusRes, batteryChargeRes) => {
+        axios.get(INVERTER_POWER_FLOW)
+    ]).then(axios.spread((gridLastRes, gridMeanRes, waterTemperatureRes, forecastRes, boilerStatusRes, batteryChargeRes, inverterPowerFlowRes) => {
         callback(getStatusValues(
                     getValue(gridMeanRes.data),
                     getValue(gridLastRes.data),
@@ -72,14 +73,15 @@ function getCurrentStatusValues(switchOn, callback) {
                     getValue(forecastRes.data),
                     getTimestamp(forecastRes.data),
                     getValue(boilerStatusRes.data),
-                    getValue(batteryChargeRes.data)));
+                    getValue(batteryChargeRes.data),
+                    inverterPowerFlowRes.data.site));
     })).catch(err => {
         console.log(new Date(), err);
         callback(processStatusValues(null));
     });
 }
 
-function getStatusValues(wattGridUsageMean = null, wattGridUsageLast = null, currentWaterTemperature = null, switchOn = null, forecastValue = null, forecastTime = null, boilerStatus = null, batteryCharge = null) {
+function getStatusValues(wattGridUsageMean = null, wattGridUsageLast = null, currentWaterTemperature = null, switchOn = null, forecastValue = null, forecastTime = null, boilerStatus = null, batteryCharge = null, inverterPowerFlow = null) {
     let o = {};
     o.wattGridUsageMean = wattGridUsageMean;
     o.wattGridUsageLast = wattGridUsageLast;
@@ -88,6 +90,7 @@ function getStatusValues(wattGridUsageMean = null, wattGridUsageLast = null, cur
     o.boilerStatus = boilerStatus;
     o.forecast = {value: forecastValue, time: forecastTime}
     o.batteryCharge = batteryCharge
+    o.inverterPowerFlow = inverterPowerFlow
     console.log(new Date(), "Raw status values: ", o)
     return processStatusValues(o);
 }
@@ -105,9 +108,20 @@ function processStatusValues(currentStatusValues) {
     }
 
     statusValues.gridEnergy = 0;
+    statusValues.availableEnergy = null; // fallback is enabled
     statusValues.switchOn = currentStatusValues.switchOn;
     statusValues.batteryCharge = currentStatusValues.batteryCharge;
-    let wattGridUsage = currentStatusValues.switchOn ? currentStatusValues.wattGridUsageLast : Math.max(currentStatusValues.wattGridUsageMean, currentStatusValues.wattGridUsageLast);
+
+    var wattGridUsage = null
+    if (currentStatusValues.inverterPowerFlow !== null) {
+        // the usage is calculated without power flow to battery
+        console.log(new Date(), "WattGridUsage is calculated from inverterPowerFlow");
+        wattGridUsage = (currentStatusValues.inverterPowerFlow.P_PV - Math.abs(currentStatusValues.inverterPowerFlow.P_Load)) * -1
+    } else {// fallback and also used for test cases
+        console.log(new Date(), "WattGridUsage is calculated from wattGridUsageMean/Max");
+        wattGridUsage = currentStatusValues.switchOn ? currentStatusValues.wattGridUsageLast : Math.max(currentStatusValues.wattGridUsageMean, currentStatusValues.wattGridUsageLast);
+    }
+
     // apply offsets and map grid usage to range unsigned int
     if (currentStatusValues.wattGridUsageMean === null || currentStatusValues.wattGridUsageLast === null) {
         // we got no information about grid usage fallback will be applied
