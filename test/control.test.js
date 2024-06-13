@@ -115,19 +115,6 @@ assertMeanLast(null, null, CONFIG.maxWaterTemperatureFallback + 1, SWITCH_STATUS
 assertMeanLast(null, null, CONFIG.maxWaterTemperatureFallback - 1, SWITCH_STATUS.OFF_FALLBACK, false)
 assertMeanLast(null, null, CONFIG.maxWaterTemperatureFallback - 1, SWITCH_STATUS.ON_FALLBACK, true)
 
-// check forecast
-console.log("test forecast")
-testCount = 0
-assertMeanLast(null, null, minWaterTemperature + 1, SWITCH_STATUS.ON_FALLBACK, false, CONFIG.wattThresholdToSwitchOn - 10, new Date("2023-08-29T11:00:00Z"))
-assertMeanLast(excessEnergyOverThreshold, excessEnergyOverThreshold, minWaterTemperature + 1, SWITCH_STATUS.ON_ENERGY, false, CONFIG.wattThresholdToSwitchOn - 10, new Date("2023-08-29T11:00:00Z"))
-assertMeanLast(excessEnergyUnderThreshold, excessEnergyUnderThreshold, CONFIG.maxWaterTemperatureFallback - CONFIG.maxWaterTemperatureDelta - 1, SWITCH_STATUS.ON_FORECAST, false, CONFIG.wattThresholdToSwitchOn - 10, new Date("2023-08-29T11:00:00Z"))
-assertMeanLast(excessEnergyUnderThreshold + wattThreshold, excessEnergyUnderThreshold + wattThreshold, minWaterTemperature + 1, SWITCH_STATUS.OFF_FORECAST, false, CONFIG.wattThresholdToSwitchOn - 10, new Date("2023-08-29T11:00:00Z"))
-assertMeanLast(excessEnergyOverThreshold + CONFIG.availableEnergyOffsetFallback, excessEnergyOverThreshold + CONFIG.availableEnergyOffsetFallback, minWaterTemperature + 1, SWITCH_STATUS.ON_FORECAST, false, CONFIG.wattThresholdToSwitchOn - 10, new Date("2023-08-29T11:00:00Z"))
-assertMeanLast(excessEnergyOverThreshold + wattThreshold, excessEnergyOverThreshold + wattThreshold, CONFIG.maxWaterTemperatureFallback + 1, SWITCH_STATUS.OFF_LOW_ENERGY, false, CONFIG.wattThresholdToSwitchOn - 10, new Date("2023-08-29T11:00:00Z"))
-
-assertMeanLast(1, 1, CONFIG.maxWaterTemperatureFallback - 1, SWITCH_STATUS.ON_FORECAST, true, CONFIG.wattThresholdToSwitchOn - 10, new Date("2023-08-29T11:00:00Z"))
-assertMeanLast(1000, 1000, CONFIG.maxWaterTemperatureFallback - 1, SWITCH_STATUS.OFF_FORECAST, true, CONFIG.wattThresholdToSwitchOn - 10, new Date("2023-08-29T11:00:00Z"))
-
 // check modified CONFIG.wattZeroGridUsageOffset value
 console.log("test wattZeroGridUsageOffset")
 testCount = 0
@@ -203,9 +190,9 @@ function assertMeanLast(wattGridUsageMean, wattGridUsageLast, currentWaterTemper
     testCount++;
     console.log("=".repeat(80))
     console.log("    => expected Result: " + expectedResult.message)
-    result = control.determineNewSwitchStatus(DataProvider.getStatusValues(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, switchOn, forecastValue, forecastTime, boilerStatus, batteryCharge))
+    result = control.determineNewSwitchStatus(DataProvider.getStatusValues(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, switchOn, boilerStatus, batteryCharge))
     assertlib.equal(result, expectedResult, "For mean/last -> Expected: " + JSON.stringify(expectedResult) + " but got " + JSON.stringify(result) + " in test nr.: " + testCount)
     console.log("-".repeat(80))
-    result2 = control.determineNewSwitchStatus(DataProvider.getStatusValues(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, switchOn, forecastValue, forecastTime, boilerStatus, batteryCharge, {P_PV: Math.max(wattGridUsageLast, wattGridUsageMean) * -1, P_Load: 0}))
+    result2 = control.determineNewSwitchStatus(DataProvider.getStatusValues(wattGridUsageMean, wattGridUsageLast, currentWaterTemperature, switchOn, boilerStatus, batteryCharge, {P_PV: Math.max(wattGridUsageLast, wattGridUsageMean) * -1, P_Load: 0}))
     assertlib.equal(result2, expectedResult, "For inverterPowerFlow -> Expected: " + JSON.stringify(expectedResult) + " but got " + JSON.stringify(result2) + " in test nr.: " + testCount)
 }

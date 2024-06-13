@@ -2,13 +2,6 @@ const axios = require('axios');
 const CONFIG = require('./config').CONFIG
 
 
-const INFLUX_FORECAST_PRODUCTION_LAST = function() {
-    let start = new Date();
-    start.setHours(0,0,0,0);
-    let end = new Date();
-    end.setHours(23, 59, 59, 999)
-    return `${CONFIG.influxBaseUrl}/query?pretty=true&db=pvforecast&q=SELECT max("value") FROM "autogen"."pv_forecast_watts" WHERE time >= '${start.toISOString()}' and time <= '${end.toISOString()}'`
-}
 const INFLUX_WATER_TEMPERATURE_LAST = `${CONFIG.influxBaseUrl}/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "autogen"."eta_buffer_temperature_sensor_top_celsius" WHERE time >= now() - 5m and time <= now()`;
 const INFLUX_GRID_USAGE_LAST = `${CONFIG.influxBaseUrl}/query?pretty=true&db=inverter&q=SELECT last("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 5m and time <= now()`;
 const INFLUX_GRID_USAGE_MEAN = `${CONFIG.influxBaseUrl}/query?pretty=true&db=inverter&q=SELECT mean("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 10m and time <= now()`;
@@ -37,22 +30,15 @@ function getValue(result) {
     }
 }
 
-/**
- * 
- * @param {JSON} result The json where to get timestamp from 
- * @returns The parsed timestamp which should be a Date or null if an error occurs
- */
-function getTimestamp(result) {
-    if (result === null) {
-        console.log(new Date(), "Could not get timestamp from null result")
-        return null;
+function transformWattpilotResponse(response) {
+    var retVal = {power: 0}
+    // parse wattpilot_power{host="wattpilot.localdomain",serial="91036822"} 0 1718021949741
+    var regex = /^ *wattpilot_power\{.*\} ([0-9\.]*) .*$/gm;
+    var res = regex.exec(response)
+    if (res !==  null && res[1]) {
+        retVal.power = Number(res[1])
     }
-    try {
-        return new Date(result.results[0].series[0].values[0][0]);
-    } catch (error) {
-        console.log(new Date(), "Could not get timestamp from JSON", result);
-        return null;
-    }
+    return retVal;
 }
 
 function getCurrentStatusValues(switchOn, callback) {
@@ -60,37 +46,36 @@ function getCurrentStatusValues(switchOn, callback) {
         axios.get(INFLUX_GRID_USAGE_LAST, {headers: INFLUX_REQUEST_HEADER}),
         axios.get(INFLUX_GRID_USAGE_MEAN, {headers: INFLUX_REQUEST_HEADER}),
         axios.get(INFLUX_WATER_TEMPERATURE_LAST, {headers: INFLUX_REQUEST_HEADER}),
-        axios.get(INFLUX_FORECAST_PRODUCTION_LAST(), {headers: INFLUX_REQUEST_HEADER}),
         axios.get(INFLUX_BOILER_STATUS, {headers: INFLUX_REQUEST_HEADER}),
         axios.get(INFLUX_BATTERY_CHARGE_LAST, {headers: INFLUX_REQUEST_HEADER}),
-        axios.get(INVERTER_POWER_FLOW)
-    ]).then(axios.spread((gridLastRes, gridMeanRes, waterTemperatureRes, forecastRes, boilerStatusRes, batteryChargeRes, inverterPowerFlowRes) => {
+        axios.get(INVERTER_POWER_FLOW),
+        axios.get(CONFIG.wattpilotMetricsUrl, {transformResponse: transformWattpilotResponse})
+    ]).then(axios.spread((gridLastRes, gridMeanRes, waterTemperatureRes, boilerStatusRes, batteryChargeRes, inverterPowerFlowRes, wattpilotRes) => {
         callback(getStatusValues(
                     getValue(gridMeanRes.data),
                     getValue(gridLastRes.data),
                     getValue(waterTemperatureRes.data),
                     switchOn,
-                    getValue(forecastRes.data),
-                    getTimestamp(forecastRes.data),
                     getValue(boilerStatusRes.data),
                     getValue(batteryChargeRes.data),
-                    inverterPowerFlowRes.data.site));
+                    inverterPowerFlowRes.data.site,
+                    wattpilotRes.data));
     })).catch(err => {
         console.log(new Date(), err);
         callback(processStatusValues(null));
     });
 }
 
-function getStatusValues(wattGridUsageMean = null, wattGridUsageLast = null, currentWaterTemperature = null, switchOn = null, forecastValue = null, forecastTime = null, boilerStatus = null, batteryCharge = null, inverterPowerFlow = null) {
+function getStatusValues(wattGridUsageMean = null, wattGridUsageLast = null, currentWaterTemperature = null, switchOn = null, boilerStatus = null, batteryCharge = null, inverterPowerFlow = null, wattpilot = {power: 0}) {
     let o = {};
     o.wattGridUsageMean = wattGridUsageMean;
     o.wattGridUsageLast = wattGridUsageLast;
     o.currentWaterTemperature = currentWaterTemperature;
     o.switchOn = switchOn;
     o.boilerStatus = boilerStatus;
-    o.forecast = {value: forecastValue, time: forecastTime}
     o.batteryCharge = batteryCharge
     o.inverterPowerFlow = inverterPowerFlow
+    o.wattpilot = wattpilot
     console.log(new Date(), "Raw status values: ", o)
     return processStatusValues(o);
 }
@@ -101,7 +86,6 @@ function processStatusValues(currentStatusValues) {
     if (currentStatusValues === null) {
         statusValues.gridEnergy = null;
         statusValues.primarySourceActive = false;
-        statusValues.forecast = null;
         statusValues.currentWaterTemperature = null;
         statusValues.availableEnergy = null;
         return statusValues;
@@ -114,9 +98,9 @@ function processStatusValues(currentStatusValues) {
 
     var wattGridUsage = null
     if (currentStatusValues.inverterPowerFlow !== null) {
-        // the usage is calculated without power flow to battery
-        console.log(new Date(), "WattGridUsage is calculated from inverterPowerFlow");
-        wattGridUsage = (currentStatusValues.inverterPowerFlow.P_PV - Math.abs(currentStatusValues.inverterPowerFlow.P_Load)) * -1
+        // the usage is calculated without power flow to battery and wattpilot usage
+        console.log(new Date(), "WattGridUsage is calculated from inverterPowerFlow and wattpilot usage");
+        wattGridUsage = (currentStatusValues.inverterPowerFlow.P_PV + currentStatusValues.wattpilot.power - Math.abs(currentStatusValues.inverterPowerFlow.P_Load)) * -1
     } else {// fallback and also used for test cases
         console.log(new Date(), "WattGridUsage is calculated from wattGridUsageMean/Max");
         wattGridUsage = currentStatusValues.switchOn ? currentStatusValues.wattGridUsageLast : Math.max(currentStatusValues.wattGridUsageMean, currentStatusValues.wattGridUsageLast);
@@ -137,7 +121,6 @@ function processStatusValues(currentStatusValues) {
     }
 
     statusValues.primarySourceActive = CONFIG.offWhenPrimarySourceActive && currentStatusValues.boilerStatus && currentStatusValues.boilerStatus !== 0;
-    statusValues.forecast = currentStatusValues.forecast;
     statusValues.currentWaterTemperature = currentStatusValues.currentWaterTemperature;
     return statusValues;
 }

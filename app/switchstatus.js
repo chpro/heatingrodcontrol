@@ -2,7 +2,6 @@ const CONFIG = require('./config').CONFIG
 
 const SWITCH_STATUS = {
     ON_HIGH_BATTERY_CHARGE: {on: true, status: 6, message: "On high battery charge is used to cover low production", timerPeriod: CONFIG.timerPeriodOnEnergy},
-    ON_FORECAST: {on: true, status: 5, message: "On due to forecast fallback operating mode", timerPeriod: CONFIG.timerPeriodOnFallback},
     ON_FALLBACK: {on: true, status: 4, message: "On due to no value for energy production was available and time within fallback operating hours", timerPeriod: CONFIG.timerPeriodOnFallback},
     ON_MANUALLY: {on: true, status: 3, message: "On due to manual intervention", timerPeriod: CONFIG.timerPeriodManually},
     ON_LOW_TEMPERATURE: {on: true, status: 2, message: "On due to low water temperature", timerPeriod: CONFIG.timerPeriodOnLowTemperature},
@@ -12,7 +11,6 @@ const SWITCH_STATUS = {
     OFF_NIGHT: {on: false, status: -2, message: "Off due time outside normal operation hours", timerPeriod: CONFIG.timerPeriodOffNight},
     OFF_MANUALLY: {on: false, status: -3, message: "Off due to manual intervention", timerPeriod: CONFIG.timerPeriodManually},
     OFF_FALLBACK: {on: false, status: -4, message: "Off due to no value for energy production was available and time outside fallback operating hours", timerPeriod: CONFIG.timerPeriodOffFallback},
-    OFF_FORECAST: {on: false, status: -5, message: "Off due to too low energy production within the forecast fallback operating mode", timerPeriod: CONFIG.timerPeriodOffFallback},
     OFF_PRIMARY_SOURCE_ACTIVE: {on: false, status: -6, message: "Off due to too another appliance is enabled and producing hot water", timerPeriod: CONFIG.timerPeriodOffPrimarySourceActive},
     OFF_LOW_BATTERY_CHARGE: {on: false, status: -7, message: "Off due to too low battery charge", timerPeriod: CONFIG.timerPeriodOffLowBatteryCharge},
 };

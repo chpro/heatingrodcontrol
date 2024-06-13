@@ -24,6 +24,7 @@ const CONFIG = {
     influxBaseUrl: process.env.INFLUX_BASE_URL || "http://tig:8086",
     influxToken: process.env.INFLUX_TOKEN,
     inverterPowerFlowUrl: process.env.INVERTER_POWER_FLOW_URL || "http://inverter.localdomain/status/powerflow",
+    wattpilotMetricsUrl: process.env.WATTPILOT_METRICS_URL || "http://microservices.localdomain:9101/metrics",
 
     // shelly switch
     switch0Host: process.env.SWITCH0_HOST || "heatingrod.localdomain",
