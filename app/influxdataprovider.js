@@ -99,8 +99,9 @@ function processStatusValues(currentStatusValues) {
     var wattGridUsage = null
     if (currentStatusValues.inverterPowerFlow !== null) {
         // the usage is calculated without power flow to battery and wattpilot usage
-        console.log(new Date(), "WattGridUsage is calculated from inverterPowerFlow and wattpilot usage");
-        wattGridUsage = (currentStatusValues.inverterPowerFlow.P_PV + currentStatusValues.wattpilot.power - Math.abs(currentStatusValues.inverterPowerFlow.P_Load)) * -1
+        var offset = currentStatusValues.currentWaterTemperature >= CONFIG.maxWaterTemperatureFallback ? 0 : currentStatusValues.wattpilot.power;
+        console.log(new Date(), "WattGridUsage is calculated from inverterPowerFlow and offset ", offset);
+        wattGridUsage = (currentStatusValues.inverterPowerFlow.P_PV + offset - Math.abs(currentStatusValues.inverterPowerFlow.P_Load)) * -1
     } else {// fallback and also used for test cases
         console.log(new Date(), "WattGridUsage is calculated from wattGridUsageMean/Max");
         wattGridUsage = currentStatusValues.switchOn ? currentStatusValues.wattGridUsageLast : Math.max(currentStatusValues.wattGridUsageMean, currentStatusValues.wattGridUsageLast);
