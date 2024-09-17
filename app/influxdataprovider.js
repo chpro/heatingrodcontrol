@@ -41,15 +41,20 @@ function transformWattpilotResponse(response) {
     return retVal;
 }
 
+function useNull(error) {
+    console.log(new Date(), "Could not get response", error);
+    return {data: null};
+}
+
 function getCurrentStatusValues(switchOn, callback) {
     axios.all([
-        axios.get(INFLUX_GRID_USAGE_LAST, {headers: INFLUX_REQUEST_HEADER}),
-        axios.get(INFLUX_GRID_USAGE_MEAN, {headers: INFLUX_REQUEST_HEADER}),
-        axios.get(INFLUX_WATER_TEMPERATURE_LAST, {headers: INFLUX_REQUEST_HEADER}),
-        axios.get(INFLUX_BOILER_STATUS, {headers: INFLUX_REQUEST_HEADER}),
-        axios.get(INFLUX_BATTERY_CHARGE_LAST, {headers: INFLUX_REQUEST_HEADER}),
-        axios.get(INVERTER_POWER_FLOW),
-        axios.get(CONFIG.wattpilotMetricsUrl, {transformResponse: transformWattpilotResponse})
+        axios.get(INFLUX_GRID_USAGE_LAST, {headers: INFLUX_REQUEST_HEADER}).catch(useNull),
+        axios.get(INFLUX_GRID_USAGE_MEAN, {headers: INFLUX_REQUEST_HEADER}).catch(useNull),
+        axios.get(INFLUX_WATER_TEMPERATURE_LAST, {headers: INFLUX_REQUEST_HEADER}).catch(useNull),
+        axios.get(INFLUX_BOILER_STATUS, {headers: INFLUX_REQUEST_HEADER}).catch(useNull),
+        axios.get(INFLUX_BATTERY_CHARGE_LAST, {headers: INFLUX_REQUEST_HEADER}).catch(useNull),
+        axios.get(INVERTER_POWER_FLOW).catch(useNull),
+        axios.get(CONFIG.wattpilotMetricsUrl, {transformResponse: transformWattpilotResponse}).catch(useNull)
     ]).then(axios.spread((gridLastRes, gridMeanRes, waterTemperatureRes, boilerStatusRes, batteryChargeRes, inverterPowerFlowRes, wattpilotRes) => {
         callback(getStatusValues(
                     getValue(gridMeanRes.data),
@@ -58,7 +63,7 @@ function getCurrentStatusValues(switchOn, callback) {
                     switchOn,
                     getValue(boilerStatusRes.data),
                     getValue(batteryChargeRes.data),
-                    inverterPowerFlowRes.data.site,
+                    inverterPowerFlowRes.data === null ? null : inverterPowerFlowRes.data.site,
                     wattpilotRes.data));
     })).catch(err => {
         console.log(new Date(), err);

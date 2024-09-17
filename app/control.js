@@ -200,7 +200,7 @@ function shiftAvailableEnergy(statusValues) {
  */
 function isWaterTemperatureToHigh(statusValues, maxWaterTemperature, maxWaterTemperatureDelta) {
     if (statusValues.currentWaterTemperature === null) {
-        return false;
+        return true;
     }
 
     // turn off if maxWaterTemperature is reached
