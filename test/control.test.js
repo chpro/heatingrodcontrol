@@ -68,7 +68,6 @@ assert(-1000, 0, SWITCH_STATUS.ON_LOW_TEMPERATURE)
 assert(excessEnergyUnderThreshold, 0, SWITCH_STATUS.ON_LOW_TEMPERATURE)
 assert(excessEnergyOverThreshold, 0, SWITCH_STATUS.ON_LOW_TEMPERATURE)
 assert(0, minWaterTemperature +1, SWITCH_STATUS.OFF_LOW_ENERGY)
-assert(null, null, SWITCH_STATUS.ON_FALLBACK)
 assert(excessEnergyThreshold, null, SWITCH_STATUS.ON_ENERGY)
 assertMeanLast(null, null, minWaterTemperature - 1, SWITCH_STATUS.ON_LOW_TEMPERATURE, false)
 console.log("test watt threshold")
@@ -78,6 +77,7 @@ assert(excessEnergyOverThreshold, minWaterTemperature + 1, SWITCH_STATUS.ON_ENER
 assert(excessEnergyThreshold, minWaterTemperature + 10, SWITCH_STATUS.ON_ENERGY)
 // this is also the the test for query fallBackValues
 assert(null, minWaterTemperature +10, SWITCH_STATUS.ON_FALLBACK)
+assert(null, null, SWITCH_STATUS.OFF_FALLBACK)
 
 // check logic when switch is on
 console.log("test switch on")

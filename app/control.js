@@ -25,7 +25,7 @@ const dataProvider = require('./influxdataprovider')
 
 console.log(new Date(), "CONFIG: ", CONFIG)
 
-let switch0 = ShellySwitch.getSwitch(0, CONFIG.switch0Host);
+let switch0 = ShellySwitch.getSwitch(0, CONFIG.switch0Host, CONFIG.switch0ApiVersion);
 
 // holds the handle for the recurring timer to clear it when new one is scheduled
 let executionTimer;
@@ -77,6 +77,11 @@ function setSwitch(switchStatus) {
 function sendStatusChange(switchStatus) {
     if(DRY_RUN) {
         console.log(new Date(), "Dry run. not sending status change", switchStatus);
+        return;
+    }
+
+    if (!CONFIG.sendStatusChange) {
+        console.log(new Date(), "Not sending status change because disabled by config", switchStatus);
         return;
     }
 
@@ -245,7 +250,7 @@ function canConsumeBatteryCharge(statusValues) {
 function isWithinOperatingHours(startHour, endHour) {
     const now = new Date();
     const currentHour = now.getHours();
-    //console.log(new Date(), {currentHour: currentHour, config: CONFIG});
+    // console.log(new Date(), {currentHour: currentHour, startHour: startHour, endHour: endHour, result: currentHour >= startHour && currentHour < endHour});
     return currentHour >= startHour && currentHour < endHour;
 }
 

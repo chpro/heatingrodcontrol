@@ -23,11 +23,14 @@ const CONFIG = {
     influxHost: process.env.INFLUX_HOST || "tig",
     influxBaseUrl: process.env.INFLUX_BASE_URL || "http://tig:8086",
     influxToken: process.env.INFLUX_TOKEN,
+    influxSendStatus: process.env.INFLUX_SEND_STATUS === undefined || process.env.INFLUX_SEND_STATUS.toLowerCase() === "true",
+
     inverterPowerFlowUrl: process.env.INVERTER_POWER_FLOW_URL || "http://inverter.localdomain/status/powerflow",
     wattpilotMetricsUrl: process.env.WATTPILOT_METRICS_URL || "http://microservices.localdomain:9101/metrics",
 
     // shelly switch
     switch0Host: process.env.SWITCH0_HOST || "heatingrod.localdomain",
+    switch0ApiVersion: Number(process.env.SWITCH0_API_VERSION) || 2,
 
     // timer periods are given in milliseconds
     timerPeriodOnFallback: Number(process.env.TIMER_PERIOD_ON_FALLBACK) || MINUTE / 2,
