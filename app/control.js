@@ -80,11 +80,11 @@ function sendStatusChange(switchStatus) {
         return;
     }
 
-    if (!CONFIG.sendStatusChange) {
+    if (!CONFIG.influxSendStatus) {
         console.log(new Date(), "Not sending status change because disabled by config", switchStatus);
         return;
     }
-
+    console.log(new Date(), "Sending status change");
     axios.post(`http://${CONFIG.influxHost}:9001/telegraf`, switchStatus)
     .catch(err => {
         console.log(new Date(), err);
