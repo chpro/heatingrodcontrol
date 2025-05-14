@@ -25,7 +25,7 @@ const CONFIG = {
     influxToken: process.env.INFLUX_TOKEN,
     influxSendStatus: process.env.INFLUX_SEND_STATUS === undefined || process.env.INFLUX_SEND_STATUS.toLowerCase() === "true",
 
-    inverterPowerFlowUrl: process.env.INVERTER_POWER_FLOW_URL || "http://inverter.localdomain/status/powerflow",
+    inverterPowerFlowUrl: process.env.INVERTER_POWER_FLOW_URL || "http://inverter.localdomain/solar_api/v1/GetPowerFlowRealtimeData.fcgi",
     wattpilotMetricsUrl: process.env.WATTPILOT_METRICS_URL || "http://microservices.localdomain:9101/metrics",
 
     // shelly switch

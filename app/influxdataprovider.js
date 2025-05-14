@@ -63,7 +63,7 @@ function getCurrentStatusValues(switchOn, callback) {
                     switchOn,
                     getValue(boilerStatusRes.data),
                     getValue(batteryChargeRes.data),
-                    inverterPowerFlowRes.data === null ? null : inverterPowerFlowRes.data.site,
+                    inverterPowerFlowRes.data === null ? null : inverterPowerFlowRes.data.Body.Data.Site,
                     wattpilotRes.data));
     })).catch(err => {
         console.log(new Date(), err);
