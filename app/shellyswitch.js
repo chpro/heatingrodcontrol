@@ -19,6 +19,7 @@ const ShellySwitchV2 = {
         .then(function(result) {callback(result.data === null ? null : result.data.output === true)})
         .catch(err => {
             console.log(new Date(), err);
+            callback(null);
         });
     },
 };
@@ -45,6 +46,7 @@ const ShellySwitchV1 = {
         .then(function(result) {callback(result.data === null ? null : result.data.ison === true)})
         .catch(err => {
             console.log(new Date(), err);
+            callback(null);
         });
     },
 };

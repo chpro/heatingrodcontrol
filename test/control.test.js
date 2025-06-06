@@ -72,6 +72,8 @@ assert(excessEnergyThreshold, null, SWITCH_STATUS.ON_ENERGY)
 assertMeanLast(null, null, minWaterTemperature - 1, SWITCH_STATUS.ON_LOW_TEMPERATURE, false)
 console.log("test watt threshold")
 testCount = 0
+assert(excessEnergyUnderThreshold, minWaterTemperature + 1, SWITCH_STATUS.OFF_LOW_ENERGY, null)
+assert(excessEnergyOverThreshold, minWaterTemperature + 1, SWITCH_STATUS.ON_ENERGY, null)
 assert(excessEnergyUnderThreshold, minWaterTemperature + 1, SWITCH_STATUS.OFF_LOW_ENERGY)
 assert(excessEnergyOverThreshold, minWaterTemperature + 1, SWITCH_STATUS.ON_ENERGY)
 assert(excessEnergyThreshold, minWaterTemperature + 10, SWITCH_STATUS.ON_ENERGY)
