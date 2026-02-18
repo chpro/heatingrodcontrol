@@ -1,61 +1,60 @@
 const axios = require('axios');
+const { log, error } = require('./logger');
 
-const ShellySwitchV2 = {
-    turnOn: function () {
-        set(true);
-    },
-    turnOff: function () {
-        set(false);
-    },
-    set: function (on) {
-        axios.get("http://" + this.host + "/rpc/Switch.Set?id=" + this.id + "&on=" + on)
-        .catch(err => {
-            console.log(new Date(), err);
-        });
-    },
-    get: function(callback) {
-        // console.log(new Date(), "Getting switch status: http://" + this.host + "/rpc/Switch.GetStatus?id=" + this.id);
-        axios.get("http://" + this.host + "/rpc/Switch.GetStatus?id=" + this.id)
-        .then(function(result) {callback(result.data === null ? null : result.data.output === true)})
-        .catch(err => {
-            console.log(new Date(), err);
-            callback(null);
-        });
-    },
-};
+class ShellySwitch {
+    constructor(id, host, apiVersion = 2) {
+        this.id = id;
+        this.host = host;
+        this.apiVersion = apiVersion;
+    }
 
-const ShellySwitchV1 = {
-    turnOn: function () {
-        set(true);
-    },
-    turnOff: function () {
-        set(false);
-    },
+    async turnOn() {
+        return this.set(true);
+    }
 
-    // http://plug-01/relay/0?turn=on
-    set: function (on) {
-        console.log(new Date(), "Setting switch http://" + this.host + "/relay/" + this.id + "?turn=" + (on ? "on" : "off"));
-        axios.get("http://" + this.host + "/relay/" + this.id + "?turn=" + (on ? "on" : "off"))
-        .catch(err => {
-            console.log(new Date(), err);
-        });
-    },
-    get: function(callback) {
-        // console.log(new Date(), "Getting switch status: http://" + this.host + "/relay/" + this.id);
-        axios.get("http://" + this.host + "/relay/" + this.id)
-        .then(function(result) {callback(result.data === null ? null : result.data.ison === true)})
-        .catch(err => {
-            console.log(new Date(), err);
-            callback(null);
-        });
-    },
-};
+    async turnOff() {
+        return this.set(false);
+    }
+
+    async set(on) {
+        const url = this.apiVersion === 1 
+            ? `http://${this.host}/relay/${this.id}?turn=${on ? "on" : "off"}`
+            : `http://${this.host}/rpc/Switch.Set?id=${this.id}&on=${on}`;
+
+        log(`Setting switch ${url}`);
+        try {
+            await axios.get(url);
+        } catch (err) {
+            error(`Error setting switch ${url}:`, err.message);
+        }
+    }
+
+    async get() {
+        const url = this.apiVersion === 1
+            ? `http://${this.host}/relay/${this.id}`
+            : `http://${this.host}/rpc/Switch.GetStatus?id=${this.id}`;
+
+        log(`Getting switch status: ${url}`);
+        try {
+            const result = await axios.get(url);
+            
+            if (!result || result.data === null || result.data === undefined) {
+                log(`Invalid response from switch ${url}: result or data is null/undefined`);
+                return null;
+            }
+            
+            return this.apiVersion === 1 
+                ? result.data.ison === true 
+                : result.data.output === true;
+        } catch (err) {
+            error(`Error getting switch status ${url}:`, err.message);
+            return null;
+        }
+    }
+}
 
 function getSwitch(id, host, apiVersion = 2) {
-    let o = Object.create(apiVersion == 1 ? ShellySwitchV1 : ShellySwitchV2);
-    o.id = id;
-    o.host = host
-    return o;
-};
+    return new ShellySwitch(id, host, apiVersion);
+}
 
-module.exports = {getSwitch}
+module.exports = { getSwitch };

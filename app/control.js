@@ -1,45 +1,44 @@
-if (process.env.DRY_RUN) {
-    DRY_RUN = (process.env.DRY_RUN.toLowerCase() === "true");
-}
+const axios = require('axios');
+const { CONFIG } = require('./config');
+const { SWITCH_STATUS } = require('./switchstatus');
+const ShellySwitch = require('./shellyswitch');
+const dataProvider = require('./influxdataprovider');
+const { log, error } = require('./logger');
 
-if (typeof DRY_RUN === 'undefined') {
-    DRY_RUN = false;
-}
+const DRY_RUN = process.env.DRY_RUN ? (process.env.DRY_RUN.toLowerCase() === "true") : false;
+let RUN_WITH_TIMER = true;
 
-// timer disabling can only be done within a dry run
-RUN_WITH_TIMER = true;
 if (DRY_RUN) {
     if (process.env.RUN_WITH_TIMER) {
         RUN_WITH_TIMER = (process.env.RUN_WITH_TIMER.toLowerCase() === "true");
     } else {
         RUN_WITH_TIMER = false;
     }
-    console.log(new Date(), "Executing dry run with timers " + (RUN_WITH_TIMER ? "enabled": "disabled"));
+    log(`Executing dry run with timers ${RUN_WITH_TIMER ? "enabled" : "disabled"}`);
 }
 
-const axios = require('axios');
-const CONFIG = require('./config').CONFIG
-const SWITCH_STATUS = require('./switchstatus').SWITCH_STATUS
-const ShellySwitch = require('./shellyswitch')
-const dataProvider = require('./influxdataprovider')
+log("CONFIG: ", CONFIG);
 
-console.log(new Date(), "CONFIG: ", CONFIG)
-
-let switch0 = ShellySwitch.getSwitch(0, CONFIG.switch0Host, CONFIG.switch0ApiVersion);
+const switch0 = ShellySwitch.getSwitch(0, CONFIG.switch0Host, CONFIG.switch0ApiVersion);
 
 // holds the handle for the recurring timer to clear it when new one is scheduled
 let executionTimer;
 
 /**
- *  this is the entry point  which calls the switch status change
+ *  this is the entry point which calls the switch status change
  */
-function update() {
-    switch0.get(function(switchOn) {
-        dataProvider.getCurrentStatusValues(switchOn, function(currentStatusValues) {
-            let switchStatus = determineNewSwitchStatus(currentStatusValues);
-            setNewSwitchStatus(switchStatus);
-        });
-    });
+async function update() {
+    try {
+        const switchOn = await switch0.get();
+        if (switchOn === null) {
+            log("Warning: Could not determine switch status (switchOn is null). Proceeding with null status.");
+        }
+        const currentStatusValues = await dataProvider.getCurrentStatusValues(switchOn);
+        const switchStatus = determineNewSwitchStatus(currentStatusValues);
+        await setNewSwitchStatus(switchStatus);
+    } catch (err) {
+        error("Error during update loop:", err);
+    }
 }
 
 /**
@@ -48,7 +47,7 @@ function update() {
  */
 function updateTimer(switchStatus) {
     if (!RUN_WITH_TIMER) {
-        console.log(new Date(), "Dry run. not setting any timers")
+        log("Dry run. not setting any timers");
         return;
     }
     if (executionTimer) {
@@ -61,55 +60,56 @@ function updateTimer(switchStatus) {
  * Calls remote function to switch on/off switch
  * @param {SWITCH_STATUS} switchStatus the new status of the switch which holds also the new swicht postion
  */
-function setSwitch(switchStatus) {
+async function setSwitch(switchStatus) {
     if (DRY_RUN) {
-        console.log(new Date(), "Dry run. not setting switch status", switchStatus)
+        log("Dry run. not setting switch status", switchStatus);
         return;
     }
-    console.log(new Date(), "New switchs status: " , switchStatus);
-    switch0.set(switchStatus.on);
+    log("New switch status: ", switchStatus);
+    await switch0.set(switchStatus.on);
 }
 
 /**
  * Sends a status update to telegraf to write it into influx db
  * @param {SWITCH_STATUS} switchStatus the new status of the switch which is transmitted as json to influx db
  */
-function sendStatusChange(switchStatus) {
-    if(DRY_RUN) {
-        console.log(new Date(), "Dry run. not sending status change", switchStatus);
+async function sendStatusChange(switchStatus) {
+    if (DRY_RUN) {
+        log("Dry run. not sending status change", switchStatus);
         return;
     }
 
     if (!CONFIG.influxSendStatus) {
-        console.log(new Date(), "Not sending status change because disabled by config", switchStatus);
+        log("Not sending status change because disabled by config", switchStatus);
         return;
     }
-    console.log(new Date(), "Sending status change");
-    axios.post(`http://${CONFIG.influxHost}:9001/telegraf`, switchStatus)
-    .catch(err => {
-        console.log(new Date(), err);
-    });
+    log("Sending status change");
+    try {
+        await axios.post(`http://${CONFIG.influxHost}:9001/telegraf`, switchStatus);
+    } catch (err) {
+        error("Error sending status change to influx:", err.message);
+    }
 }
 
 /**
  * Sends a status update to telegraf to write it into influx db
  * @param {SWITCH_STATUS} switchStatus the new status to be set
  */
-function setNewSwitchStatus(switchStatus) {
-    sendStatusChange(switchStatus);
-    setSwitch(switchStatus);
+async function setNewSwitchStatus(switchStatus) {
+    await sendStatusChange(switchStatus);
+    await setSwitch(switchStatus);
     updateTimer(switchStatus);
 }
 
 /**
  * 
- * @param {Object} CurrentStatusValues
+ * @param {Object} processedStatusValues
  * @returns The SWITCH_STATUS which was determined due to the passed values
  */
 function determineNewSwitchStatus(processedStatusValues) {
-    console.log(new Date(), "Determine switch status with processed status values: ", processedStatusValues)
+    log("Determine switch status with processed status values: ", processedStatusValues);
 
-    if(processedStatusValues.primarySourceActive) {
+    if (processedStatusValues.primarySourceActive) {
         return SWITCH_STATUS.OFF_PRIMARY_SOURCE_ACTIVE;
     }
 
@@ -117,7 +117,7 @@ function determineNewSwitchStatus(processedStatusValues) {
         return SWITCH_STATUS.OFF_NIGHT;
     }
 
-    if (processedStatusValues.batteryCharge < CONFIG.minBatteryCharge) {
+    if (processedStatusValues.batteryCharge !== null && processedStatusValues.batteryCharge < CONFIG.minBatteryCharge) {
         return SWITCH_STATUS.OFF_LOW_BATTERY_CHARGE;
     }
 
@@ -135,7 +135,7 @@ function determineNewSwitchStatus(processedStatusValues) {
 
     // turn on if no information about energy production is available only within fallback operation hours
     if (processedStatusValues.availableEnergy === null) {
-        if (isWithinFallbackOperatingHours() && !isWaterTemperatureToHigh(processedStatusValues, CONFIG.maxWaterTemperatureFallback , CONFIG.maxWaterTemperatureDelta)) {
+        if (isWithinFallbackOperatingHours() && !isWaterTemperatureToHigh(processedStatusValues, CONFIG.maxWaterTemperatureFallback, CONFIG.maxWaterTemperatureDelta)) {
             return SWITCH_STATUS.ON_FALLBACK;
         } else {
             return SWITCH_STATUS.OFF_FALLBACK;
@@ -143,7 +143,7 @@ function determineNewSwitchStatus(processedStatusValues) {
     }
 
     // determinSwitchStatusByGriByGridUsage then determineNewSwitchStatusByCharge
-    return determinSwitchStatusByGridUsage(processedStatusValues, function(){return SWITCH_STATUS.ON_ENERGY}, determineNewSwitchStatusByCharge);
+    return determinSwitchStatusByGridUsage(processedStatusValues, function () { return SWITCH_STATUS.ON_ENERGY }, determineNewSwitchStatusByCharge);
 }
 
 /**
@@ -155,7 +155,7 @@ function determineNewSwitchStatus(processedStatusValues) {
  */
 function determinSwitchStatusByGridUsage(statusValues, onStatusFunction, offStatusFunction) {
     // check if enough solar power is available
-    console.log(new Date(), "Determine switch status by grid usage with status values", statusValues)
+    log("Determine switch status by grid usage with status values", statusValues);
     if (statusValues.switchOn && statusValues.availableEnergy > CONFIG.wattThresholdToSwitchOff) {
         return onStatusFunction(statusValues);
     } else if (!statusValues.switchOn && statusValues.availableEnergy >= CONFIG.wattThresholdToSwitchOn) {
@@ -173,8 +173,8 @@ function determinSwitchStatusByGridUsage(statusValues, onStatusFunction, offStat
  */
 function determineNewSwitchStatusByCharge(statusValues) {
     if (CONFIG.minBatteryCharge !== 0 && canConsumeBatteryCharge(statusValues)) {
-        console.log(new Date(), "Calling determine switch status by grid usage status values for battery charge");
-        return determinSwitchStatusByGridUsage(shiftAvailableEnergy(statusValues), function(){return SWITCH_STATUS.ON_HIGH_BATTERY_CHARGE}, function(){return SWITCH_STATUS.OFF_LOW_ENERGY});
+        log("Calling determine switch status by grid usage status values for battery charge");
+        return determinSwitchStatusByGridUsage(shiftAvailableEnergy(statusValues), function () { return SWITCH_STATUS.ON_HIGH_BATTERY_CHARGE }, function () { return SWITCH_STATUS.OFF_LOW_ENERGY });
     } else {
         return SWITCH_STATUS.OFF_LOW_ENERGY;
     }
@@ -193,7 +193,7 @@ function shiftAvailableEnergy(statusValues) {
         statusValues.availableEnergy = statusValues.availableEnergy + CONFIG.availableEnergyOffsetFallback;
     }
     statusValues.shifted = true;
-    return statusValues
+    return statusValues;
 }
 
 /**
@@ -211,7 +211,7 @@ function isWaterTemperatureToHigh(statusValues, maxWaterTemperature, maxWaterTem
     // turn off if maxWaterTemperature is reached
     if (statusValues.switchOn && statusValues.currentWaterTemperature >= maxWaterTemperature) {
         return true
-    } 
+    }
 
     // keep turned off till the water cooled down by by maxWaterTemperatureDelta
     if (!statusValues.switchOn && statusValues.currentWaterTemperature >= maxWaterTemperature - maxWaterTemperatureDelta) {
@@ -232,12 +232,12 @@ function canConsumeBatteryCharge(statusValues) {
     }
 
     if (statusValues.switchOn && statusValues.batteryCharge >= CONFIG.minBatteryCharge) {
-        return true
+        return true;
     }
 
     if (!statusValues.switchOn && statusValues.batteryCharge >= CONFIG.minBatteryCharge + CONFIG.minBatteryChargeDelta) {
-        return true
-    } 
+        return true;
+    }
 
     return false;
 }
@@ -250,7 +250,6 @@ function canConsumeBatteryCharge(statusValues) {
 function isWithinOperatingHours(startHour, endHour) {
     const now = new Date();
     const currentHour = now.getHours();
-    // console.log(new Date(), {currentHour: currentHour, startHour: startHour, endHour: endHour, result: currentHour >= startHour && currentHour < endHour});
     return currentHour >= startHour && currentHour < endHour;
 }
 
@@ -270,11 +269,18 @@ function isWithinFallbackOperatingHours() {
     return isWithinOperatingHours(CONFIG.startHourFallback, CONFIG.endHourFallback);
 }
 
-if (RUN_WITH_TIMER) {
-    console.log(new Date(), "starting the initial loop")
-    setImmediate(update);
-} else {
-    console.log(new Date(), "Dry run. not starting initial loop");
+function start() {
+    if (RUN_WITH_TIMER) {
+        log("starting the initial loop");
+        setImmediate(update);
+    } else {
+        log("Dry run. not starting initial loop");
+    }
 }
 
-module.exports = {update, determineNewSwitchStatus, setNewSwitchStatus, switch0}
+// Automatically start if run directly
+if (require.main === module) {
+    start();
+}
+
+module.exports = { update, determineNewSwitchStatus, setNewSwitchStatus, switch0, start };
