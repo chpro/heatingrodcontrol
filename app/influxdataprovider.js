@@ -2,7 +2,7 @@ const axios = require('axios');
 const { CONFIG } = require('./config');
 const { log, error } = require('./logger');
 
-const INFLUX_REQUEST_HEADER = { "Authorization": "Token " + CONFIG.influxToken };
+const getInfluxHeader = () => ({ "Authorization": "Token " + CONFIG.influxToken });
 
 /**
  * Helper to safely extract a value from InfluxDB query result
@@ -42,15 +42,15 @@ function useNull(err) {
 async function getCurrentStatusValues(switchOn) {
     const queries = [
         // Water Temp Last
-        axios.get(`${CONFIG.influxBaseUrl}/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "autogen"."eta_buffer_temperature_sensor_top_celsius" WHERE time >= now() - 5m and time <= now()`, { headers: INFLUX_REQUEST_HEADER }).catch(useNull),
+        axios.get(`${CONFIG.influxBaseUrl}/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "autogen"."eta_buffer_temperature_sensor_top_celsius" WHERE time >= now() - 5m and time <= now()`, { headers: getInfluxHeader() }).catch(useNull),
         // Grid Usage Last
-        axios.get(`${CONFIG.influxBaseUrl}/query?pretty=true&db=inverter&q=SELECT last("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 5m and time <= now()`, { headers: INFLUX_REQUEST_HEADER }).catch(useNull),
+        axios.get(`${CONFIG.influxBaseUrl}/query?pretty=true&db=inverter&q=SELECT last("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 5m and time <= now()`, { headers: getInfluxHeader() }).catch(useNull),
         // Grid Usage Mean
-        axios.get(`${CONFIG.influxBaseUrl}/query?pretty=true&db=inverter&q=SELECT mean("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 10m and time <= now()`, { headers: INFLUX_REQUEST_HEADER }).catch(useNull),
+        axios.get(`${CONFIG.influxBaseUrl}/query?pretty=true&db=inverter&q=SELECT mean("P_Grid") FROM "autogen"."powerflow" WHERE time >= now() - 10m and time <= now()`, { headers: getInfluxHeader() }).catch(useNull),
         // Boiler Status
-        axios.get(`${CONFIG.influxBaseUrl}/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "eta_boiler_status"`, { headers: INFLUX_REQUEST_HEADER }).catch(useNull),
+        axios.get(`${CONFIG.influxBaseUrl}/query?pretty=true&db=prometheus&q=SELECT last("value") FROM "eta_boiler_status"`, { headers: getInfluxHeader() }).catch(useNull),
         // Battery Charge Last
-        axios.get(`${CONFIG.influxBaseUrl}/query?pretty=true&db=inverter&q=SELECT last("StateOfCharge_Relative") FROM "autogen"."storage"`, { headers: INFLUX_REQUEST_HEADER }).catch(useNull),
+        axios.get(`${CONFIG.influxBaseUrl}/query?pretty=true&db=inverter&q=SELECT last("StateOfCharge_Relative") FROM "autogen"."storage"`, { headers: getInfluxHeader() }).catch(useNull),
         // Inverter Power Flow
         axios.get(CONFIG.inverterPowerFlowUrl).catch(useNull),
         // Wattpilot
@@ -118,7 +118,7 @@ function processStatusValues(currentStatusValues) {
     var wattGridUsage = null;
     if (currentStatusValues.inverterPowerFlow !== null) {
         // the usage is calculated without power flow to battery and wattpilot usage
-        var offset = currentStatusValues.currentWaterTemperature >= CONFIG.maxWaterTemperatureFallback ? 0 : currentStatusValues.wattpilot.power;
+        var offset = currentStatusValues.currentWaterTemperature >= CONFIG.maxWaterTemperatureFallback ? 0 : (currentStatusValues.wattpilot ? currentStatusValues.wattpilot.power : 0);
         log("WattGridUsage is calculated from inverterPowerFlow and offset ", offset);
         wattGridUsage = (currentStatusValues.inverterPowerFlow.P_PV + offset - Math.abs(currentStatusValues.inverterPowerFlow.P_Load)) * -1;
     } else {
