@@ -7,10 +7,14 @@
   },
   "scripts": {
     "test": "./node_modules/coverage/index.js test/control.test.js",
+    "test:jest": "jest test/control.spec.js",
     "prestart": "sudo docker rm heatingrodcontrol;sudo docker build -t heatingrodcontrol:latest-test .",
     "prestart:envfile": "npm run prestart",
     "start": "sudo docker run -d -p 3000:3000 -e TZ=Europe/Vienna -e \"INFLUX_TOKEN=$INFLUX_TOKEN\" -e \"DRY_RUN=true\" -e \"RUN_WITH_TIMER=true\" --name heatingrodcontrol heatingrodcontrol:latest-test",
     "start:envfile": "sudo docker run -d -p 3000:3000 -e TZ=Europe/Vienna --env-file ./heatingrod.env -e \"INFLUX_TOKEN=$INFLUX_TOKEN\" --name heatingrodcontrol heatingrodcontrol:latest-test",
     "stop": "sudo docker stop heatingrodcontrol"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0"
   }
 }
